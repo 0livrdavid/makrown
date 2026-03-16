@@ -58,6 +58,7 @@ export interface WindowState {
 export interface AppPreferences {
   lastOpenedFolder: string | null
   windowState: WindowState
+  savedSSHConnections: SSHConfig[]
 }
 
 // Resultados de busca

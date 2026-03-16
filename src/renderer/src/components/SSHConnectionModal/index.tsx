@@ -1,7 +1,51 @@
 import { useState, useEffect, useRef } from 'react'
-import { Server, X, Eye, EyeOff, Loader2, AlertCircle, ChevronRight, Folder, ArrowLeft, Check, CornerDownLeft } from 'lucide-react'
+import { Server, X, Eye, EyeOff, Loader2, AlertCircle, ChevronRight, Folder, ArrowLeft, Check, CornerDownLeft, Trash2, BookMarked } from 'lucide-react'
 import type { SSHConfig } from '../../../../shared/types'
 import type { FileEntry } from '../../../../shared/types'
+
+// ─── Saved profiles list ──────────────────────────────────────────────────────
+
+function SavedProfiles({
+  profiles,
+  onSelect,
+  onDelete,
+}: {
+  profiles: SSHConfig[]
+  onSelect: (profile: SSHConfig) => void
+  onDelete: (index: number) => void
+}): React.JSX.Element | null {
+  if (profiles.length === 0) return null
+  return (
+    <div className="border-b border-zinc-700 px-5 py-3 space-y-1">
+      <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wide mb-2">Conexões salvas</p>
+      {profiles.map((profile, i) => (
+        <div key={i} className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-700/60 transition-colors">
+          <button
+            onClick={() => onSelect(profile)}
+            className="flex flex-1 items-center gap-2.5 min-w-0"
+          >
+            <BookMarked size={12} className="shrink-0 text-indigo-400" />
+            <div className="flex flex-col items-start min-w-0">
+              <span className="text-xs font-medium text-zinc-200 truncate max-w-full">
+                {profile.label || profile.host}
+              </span>
+              <span className="text-[11px] text-zinc-500 truncate max-w-full">
+                {profile.username}@{profile.host}:{profile.port} · {profile.remotePath}
+              </span>
+            </div>
+          </button>
+          <button
+            onClick={() => onDelete(i)}
+            className="shrink-0 rounded p-1 text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+            title="Remover"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface SSHConnectionModalProps {
   onConnect: (config: SSHConfig, remotePath: string) => void
@@ -164,7 +208,7 @@ function BrowseStep({
   onBack,
 }: {
   initialPath: string
-  onConfirm: (path: string) => void
+  onConfirm: (path: string) => Promise<void>
   onBack: () => void
 }): React.JSX.Element {
   const [currentPath, setCurrentPath] = useState(initialPath)
@@ -329,26 +373,55 @@ function BrowseStep({
 export function SSHConnectionModal({ onConnect, onClose, initialConfig }: SSHConnectionModalProps): React.JSX.Element {
   const [step, setStep] = useState<'connect' | 'browse'>('connect')
   const [config, setConfig] = useState<SSHConfig>(initialConfig ?? DEFAULT_CONFIG)
+  const [savedProfiles, setSavedProfiles] = useState<SSHConfig[]>([])
+
+  useEffect(() => {
+    window.api.prefs.get<SSHConfig[]>('savedSSHConnections').then((profiles) => {
+      setSavedProfiles(profiles ?? [])
+    })
+  }, [])
 
   function handleChange<K extends keyof SSHConfig>(key: K, value: SSHConfig[K]): void {
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
+  function handleSelectProfile(profile: SSHConfig): void {
+    setConfig(profile)
+  }
+
+  async function handleDeleteProfile(index: number): Promise<void> {
+    const updated = savedProfiles.filter((_, i) => i !== index)
+    setSavedProfiles(updated)
+    await window.api.prefs.set('savedSSHConnections', updated)
+  }
+
   async function handleConnect(): Promise<void> {
-    // Establish connection with a root remotePath — user will select in step 2
     const result = await window.api.ssh.connect({ ...config, remotePath: '/' })
     if (!result.ok) throw new Error(result.error ?? 'Falha na conexão')
     setStep('browse')
   }
 
   async function handleBack(): Promise<void> {
-    // Disconnect the pending session and go back to form
     await window.api.ssh.disconnect()
     setStep('connect')
   }
 
-  function handleConfirm(remotePath: string): void {
-    onConnect(config, remotePath)
+  async function handleConfirm(remotePath: string): Promise<void> {
+    const finalConfig = { ...config, remotePath }
+
+    // Auto-save profile if it has a label and isn't already saved
+    if (finalConfig.label.trim()) {
+      const alreadyExists = savedProfiles.some(
+        (p) => p.host === finalConfig.host && p.port === finalConfig.port && p.username === finalConfig.username
+      )
+      if (!alreadyExists) {
+        const updated = [...savedProfiles, finalConfig]
+        setSavedProfiles(updated)
+        await window.api.prefs.set('savedSSHConnections', updated)
+      }
+    }
+
+    onConnect(finalConfig, remotePath)
   }
 
   function handleClose(): void {
@@ -377,12 +450,19 @@ export function SSHConnectionModal({ onConnect, onClose, initialConfig }: SSHCon
         </div>
 
         {step === 'connect' ? (
-          <ConnectStep
-            config={config}
-            onChange={handleChange}
-            onConnect={handleConnect}
-            onClose={handleClose}
-          />
+          <>
+            <SavedProfiles
+              profiles={savedProfiles}
+              onSelect={handleSelectProfile}
+              onDelete={handleDeleteProfile}
+            />
+            <ConnectStep
+              config={config}
+              onChange={handleChange}
+              onConnect={handleConnect}
+              onClose={handleClose}
+            />
+          </>
         ) : (
           <BrowseStep
             initialPath={config.remotePath || '/'}
