@@ -6,6 +6,19 @@ export type DiffLine = {
   lineRight: number | null
 }
 
+export type Hunk = {
+  id: number
+  lines: DiffLine[]
+  // Revert (← right→left): replace these lines in `modified` with `originalLines`
+  modifiedStart: number   // 0-based index in modified lines where this hunk starts
+  modifiedCount: number   // number of modified lines to remove
+  originalLines: string[] // lines from original to restore
+  // Accept (→ left→right): replace these lines in `original` with `modifiedLines`
+  originalStart: number   // 0-based index in original lines
+  originalCount: number   // number of original lines to remove
+  modifiedLines: string[] // lines from modified to apply as new baseline
+}
+
 function lcs(a: string[], b: string[]): number[][] {
   const m = a.length
   const n = b.length
@@ -49,4 +62,72 @@ export function computeLineDiff(original: string, modified: string): DiffLine[] 
 
   changes.reverse()
   return changes.length > 0 ? changes : result
+}
+
+/** Groups consecutive non-equal DiffLines into Hunks with positional metadata. */
+export function groupIntoHunks(diff: DiffLine[]): Hunk[] {
+  const hunks: Hunk[] = []
+  let hunkId = 0
+  let i = 0
+  // Track 0-based "next position" in each content after the last equal line.
+  // lineRight/lineLeft are 1-indexed, so their value equals the 0-based next index.
+  let prevModifiedLine = 0
+  let prevOriginalLine = 0
+
+  while (i < diff.length) {
+    const line = diff[i]
+    if (line.type === 'equal') {
+      prevModifiedLine = line.lineRight ?? prevModifiedLine
+      prevOriginalLine = line.lineLeft ?? prevOriginalLine
+      i++
+      continue
+    }
+
+    // Collect all consecutive non-equal lines into a hunk
+    const hunkLines: DiffLine[] = []
+    const originalLines: string[] = []
+    const modifiedLines: string[] = []
+    let firstAddedIdx: number | null = null
+    let firstRemovedIdx: number | null = null
+
+    while (i < diff.length && diff[i].type !== 'equal') {
+      const l = diff[i]
+      hunkLines.push(l)
+      if (l.type === 'added') {
+        if (firstAddedIdx === null) firstAddedIdx = (l.lineRight ?? 1) - 1
+        modifiedLines.push(l.right ?? '')
+      } else {
+        if (firstRemovedIdx === null) firstRemovedIdx = (l.lineLeft ?? 1) - 1
+        originalLines.push(l.left ?? '')
+      }
+      i++
+    }
+
+    hunks.push({
+      id: hunkId++,
+      lines: hunkLines,
+      modifiedStart: firstAddedIdx ?? prevModifiedLine,
+      modifiedCount: modifiedLines.length,
+      originalLines,
+      originalStart: firstRemovedIdx ?? prevOriginalLine,
+      originalCount: originalLines.length,
+      modifiedLines,
+    })
+  }
+
+  return hunks
+}
+
+/** Apply a revert: restore `hunk.originalLines` into `modified`. */
+export function applyRevert(modified: string, hunk: Hunk): string {
+  const lines = modified.split('\n')
+  lines.splice(hunk.modifiedStart, hunk.modifiedCount, ...hunk.originalLines)
+  return lines.join('\n')
+}
+
+/** Apply an accept: update `original` baseline with `hunk.modifiedLines`. */
+export function applyAccept(original: string, hunk: Hunk): string {
+  const lines = original.split('\n')
+  lines.splice(hunk.originalStart, hunk.originalCount, ...hunk.modifiedLines)
+  return lines.join('\n')
 }

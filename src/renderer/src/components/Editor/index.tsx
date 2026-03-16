@@ -14,7 +14,8 @@ export interface OpenTab {
   isDirty: boolean
   isNormalized: boolean
   isUploading: boolean
-  diffOf?: string // only for type === 'diff': path of the source file
+  diffOf?: string        // only for type === 'diff': path of the source file
+  contentVersion?: number // increment to force EditorPane remount after programmatic edit
 }
 
 export type LayoutMode = 'editor' | 'visualize'
@@ -40,6 +41,8 @@ interface EditorProps {
   onTabClose: (path: string) => void
   onSave: (path: string, content: string) => Promise<void>
   onContentChange: (path: string, content: string) => void
+  onDiffRevert: (filePath: string, newContent: string) => void
+  onDiffAccept: (filePath: string, newOriginal: string) => void
   editorPrefs: EditorPrefs
   onEditorPrefsChange: (prefs: EditorPrefs) => void
   onOpenSettings: () => void
@@ -224,6 +227,8 @@ export function Editor({
   onTabClose,
   onSave,
   onContentChange,
+  onDiffRevert,
+  onDiffAccept,
   editorPrefs,
   onEditorPrefsChange: _onEditorPrefsChange,
   onOpenSettings,
@@ -390,6 +395,8 @@ export function Editor({
                         original={sourceTab.originalContent}
                         isUploading={sourceTab.isUploading}
                         onEnviarFile={onEnviarFile}
+                        onContentChange={(newContent) => onDiffRevert(tab.diffOf!, newContent)}
+                        onOriginalChange={(newOriginal) => onDiffAccept(tab.diffOf!, newOriginal)}
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-sm text-zinc-600">
@@ -405,6 +412,7 @@ export function Editor({
                   className={`absolute inset-0 ${isVisible ? 'block' : 'hidden'}`}
                 >
                   <EditorPane
+                    key={`${tab.path}-${tab.contentVersion ?? 0}`}
                     tab={tab}
                     onSave={onSave}
                     onContentChange={onContentChange}

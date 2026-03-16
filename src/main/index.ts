@@ -1,8 +1,9 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { registerFilesystemHandlers } from './ipc/filesystem'
 import { registerPreferencesHandlers } from './ipc/preferences'
 import { registerSSHHandlers } from './ipc/ssh'
+import { registerUpdaterHandlers } from './ipc/updater'
 import { buildMenu } from './menu'
 import { store } from './store'
 
@@ -62,6 +63,7 @@ function createWindow(): void {
   })
 
   buildMenu(mainWindow)
+  if (!isDev) registerUpdaterHandlers(mainWindow)
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -69,6 +71,8 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+ipcMain.on('app:version', (event) => { event.returnValue = app.getVersion() })
 
 app.whenReady().then(() => {
   registerFilesystemHandlers()

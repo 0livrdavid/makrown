@@ -6,6 +6,10 @@ directories:
 files:
   - out/**/*
   - "!out/**/*.map"
+publish:
+  provider: github
+  owner: 0livrdavid
+  repo: makrown
 mac:
   target:
     - dmg

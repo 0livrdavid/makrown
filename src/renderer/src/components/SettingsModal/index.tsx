@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ChevronLeft, Type, FolderTree, Server } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ChevronLeft, Type, FolderTree, Server, RefreshCw } from 'lucide-react'
 import type { EditorPrefs } from '../Editor'
 
 export interface VpsPrefs {
@@ -18,7 +18,7 @@ interface SettingsPageProps {
 
 // ─── Static data ────────────────────────────────────────────────────────────
 
-type SectionId = 'fonte' | 'navegacao' | 'vps'
+type SectionId = 'fonte' | 'navegacao' | 'vps' | 'atualizacoes'
 
 interface NavItem { id: SectionId; label: string; description: string; icon: React.ElementType }
 interface NavGroup { group: string; items: NavItem[] }
@@ -37,6 +37,11 @@ const NAV_BASE: NavGroup[] = [
 const NAV_VPS: NavGroup = {
   group: 'VPS',
   items: [{ id: 'vps', label: 'Auto-save', description: 'Envio automático', icon: Server }],
+}
+
+const NAV_APP: NavGroup = {
+  group: 'Aplicativo',
+  items: [{ id: 'atualizacoes', label: 'Atualizações', description: 'Verificar nova versão', icon: RefreshCw }],
 }
 
 const PREFETCH_DEPTH_KEY = 'makrown:prefetch-depth'
@@ -307,11 +312,130 @@ function VpsSection({
   )
 }
 
+// ─── Update section ───────────────────────────────────────────────────────────
+
+type UpdateState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'up-to-date' }
+  | { kind: 'available'; version: string }
+  | { kind: 'downloading'; percent: number }
+  | { kind: 'downloaded' }
+  | { kind: 'error'; message: string }
+
+function UpdateSection(): React.JSX.Element {
+  const [state, setState] = useState<UpdateState>({ kind: 'idle' })
+  const appVersion = window.api?.appVersion ?? '0.1.0'
+
+  useEffect(() => {
+    const unsubs = [
+      window.api.updater.onChecking(() => setState({ kind: 'checking' })),
+      window.api.updater.onAvailable((info) => setState({ kind: 'available', version: info.version })),
+      window.api.updater.onNotAvailable(() => setState({ kind: 'up-to-date' })),
+      window.api.updater.onProgress((p) => setState({ kind: 'downloading', percent: p.percent })),
+      window.api.updater.onDownloaded(() => setState({ kind: 'downloaded' })),
+      window.api.updater.onError((e) => setState({ kind: 'error', message: e.message })),
+    ]
+    return () => unsubs.forEach((u) => u())
+  }, [])
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-sm font-semibold text-zinc-100">Atualizações</h2>
+
+      <div className="flex items-start justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3.5">
+        <div>
+          <p className="text-xs font-medium text-zinc-300">Versão atual</p>
+          <p className="mt-0.5 font-mono text-sm text-zinc-100">{appVersion}</p>
+        </div>
+        {state.kind === 'up-to-date' && (
+          <span className="mt-0.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
+            Atualizado
+          </span>
+        )}
+      </div>
+
+      {/* Status messages */}
+      {state.kind === 'available' && (
+        <div className="rounded-lg border border-indigo-700/50 bg-indigo-600/10 px-4 py-3">
+          <p className="text-xs font-medium text-indigo-300">
+            Nova versão disponível: <span className="font-mono">{state.version}</span>
+          </p>
+          <p className="mt-0.5 text-[11px] text-indigo-400/70">Clique em baixar para instalar.</p>
+        </div>
+      )}
+      {state.kind === 'downloading' && (
+        <div className="space-y-2">
+          <div className="flex justify-between text-[11px] text-zinc-400">
+            <span>Baixando atualização…</span>
+            <span>{state.percent}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-indigo-500 transition-all duration-300"
+              style={{ width: `${state.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+      {state.kind === 'downloaded' && (
+        <div className="rounded-lg border border-emerald-700/50 bg-emerald-600/10 px-4 py-3">
+          <p className="text-xs font-medium text-emerald-300">Atualização pronta para instalar.</p>
+          <p className="mt-0.5 text-[11px] text-emerald-400/70">
+            O aplicativo vai reiniciar para aplicar.
+          </p>
+        </div>
+      )}
+      {state.kind === 'error' && (
+        <div className="rounded-lg border border-red-700/50 bg-red-600/10 px-4 py-3">
+          <p className="text-xs font-medium text-red-300">Erro ao verificar atualização</p>
+          <p className="mt-0.5 text-[11px] text-red-400/70 font-mono">{state.message}</p>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        {(state.kind === 'idle' || state.kind === 'up-to-date' || state.kind === 'error') && (
+          <button
+            onClick={() => window.api.updater.check()}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-700 hover:text-zinc-100"
+          >
+            <RefreshCw size={12} />
+            Verificar atualização
+          </button>
+        )}
+        {state.kind === 'checking' && (
+          <button disabled className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3.5 py-2 text-xs font-medium text-zinc-500 opacity-60">
+            <RefreshCw size={12} className="animate-spin" />
+            Verificando…
+          </button>
+        )}
+        {state.kind === 'available' && (
+          <button
+            onClick={() => window.api.updater.download()}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
+          >
+            Baixar atualização
+          </button>
+        )}
+        {state.kind === 'downloaded' && (
+          <button
+            onClick={() => window.api.updater.install()}
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
+          >
+            Reiniciar e instalar
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Full-screen settings page ────────────────────────────────────────────────
 
 export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRemote, vpsPrefs, onVpsPrefsChange }: SettingsPageProps): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SectionId>('fonte')
-  const nav = [...NAV_BASE, NAV_VPS]
+  const nav = [...NAV_BASE, NAV_VPS, NAV_APP]
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
@@ -390,6 +514,9 @@ export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRem
             )}
             {activeSection === 'vps' && vpsPrefs && onVpsPrefsChange && (
               <VpsSection vpsPrefs={vpsPrefs} onChange={onVpsPrefsChange} />
+            )}
+            {activeSection === 'atualizacoes' && (
+              <UpdateSection />
             )}
           </div>
         </main>

@@ -170,6 +170,7 @@ function App(): React.JSX.Element {
 
   // Refs to avoid stale closures in auto-save timers
   const tabsRef = useRef<OpenTab[]>([])
+  const pendingUploadsRef = useRef<OpenTab[]>([])
   const vpsPrefsRef = useRef<VpsPrefs>(vpsPrefs)
   const autoSaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [showEnviarModal, setShowEnviarModal] = useState(false)
@@ -180,6 +181,7 @@ function App(): React.JSX.Element {
 
   // Keep refs in sync for use inside setTimeout callbacks
   useEffect(() => { tabsRef.current = tabs }, [tabs])
+  useEffect(() => { pendingUploadsRef.current = pendingUploads }, [pendingUploads])
   useEffect(() => { vpsPrefsRef.current = vpsPrefs }, [vpsPrefs])
   useEffect(() => { sshStatusRef.current = sshStatus }, [sshStatus])
 
@@ -480,6 +482,8 @@ function App(): React.JSX.Element {
         ? { ...t, isDirty: false, isUploading: false, originalContent: content }
         : t
       ))
+      // Also remove from pendingUploads if it was there (e.g. closed dirty tab)
+      setPendingUploads((prev) => prev.filter((t) => t.path !== path))
       if (!isRemote) addToast('Arquivo salvo', 'success')
     } else {
       setTabs((prev) => prev.map((t) => t.path === path ? { ...t, isUploading: false } : t))
@@ -515,6 +519,35 @@ function App(): React.JSX.Element {
       addToast(`${failed.length} arquivo(s) falharam ao enviar`, 'error')
     }
   }, [tabs, pendingUploads, addToast])
+
+  // Diff merge: revert a hunk (or all) — updates tab.content + forces editor remount
+  const handleDiffRevert = useCallback((filePath: string, newContent: string) => {
+    const update = (t: OpenTab): OpenTab => t.path !== filePath ? t : {
+      ...t,
+      content: newContent,
+      isDirty: newContent !== t.originalContent,
+      contentVersion: (t.contentVersion ?? 0) + 1,
+    }
+    setTabs((prev) => prev.map(update))
+    setPendingUploads((prev) => prev.map(update))
+    // Keep draft in sync
+    const tab = [...tabs, ...pendingUploads].find((t) => t.path === filePath)
+    if (tab) {
+      if (newContent !== tab.originalContent) saveDraft(filePath, newContent)
+      else clearDraft(filePath)
+    }
+  }, [tabs, pendingUploads])
+
+  // Diff merge: accept a hunk (or all) — updates tab.originalContent (baseline only, no upload)
+  const handleDiffAccept = useCallback((filePath: string, newOriginal: string) => {
+    const update = (t: OpenTab): OpenTab => t.path !== filePath ? t : {
+      ...t,
+      originalContent: newOriginal,
+      isDirty: t.content !== newOriginal,
+    }
+    setTabs((prev) => prev.map(update))
+    setPendingUploads((prev) => prev.map(update))
+  }, [])
 
   const handleOpenDiff = useCallback((filePath: string) => {
     // Look in open tabs first, then in pendingUploads (closed dirty files)
@@ -558,6 +591,7 @@ function App(): React.JSX.Element {
 
   const handleEnviarFile = useCallback(async (path: string) => {
     const tab = tabsRef.current.find((t) => t.path === path)
+           ?? pendingUploadsRef.current.find((t) => t.path === path)
     if (!tab) return
     await handleSave(path, tab.content)
   }, [handleSave])
@@ -805,6 +839,8 @@ function App(): React.JSX.Element {
           onTabClose={handleTabClose}
           onSave={handleSave}
           onContentChange={handleContentChange}
+          onDiffRevert={handleDiffRevert}
+          onDiffAccept={handleDiffAccept}
           editorPrefs={editorPrefs}
           onEditorPrefsChange={handleEditorPrefsChange}
           onOpenSettings={() => setShowSettingsModal(true)}
