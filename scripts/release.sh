@@ -31,7 +31,12 @@ if [[ -n $(git status --porcelain) ]]; then
 fi
 
 echo "🔄 Atualizando main..."
-git pull origin main
+if ! git pull --rebase origin main; then
+  echo "❌ Conflito ao fazer pull. Resolva o merge/rebase antes de continuar:"
+  echo "   git rebase --abort   → cancela e volta ao estado anterior"
+  echo "   git rebase --continue → após resolver os conflitos manualmente"
+  exit 1
+fi
 
 # Versão atual
 CURRENT=$(node -p "require('./package.json').version")
