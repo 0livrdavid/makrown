@@ -3,6 +3,7 @@ productName: Makrown
 directories:
   buildResources: build
   output: dist
+npmRebuild: false
 files:
   - out/**/*
   - "!out/**/*.map"
