@@ -1,0 +1,22 @@
+appId: com.makrown.app
+productName: Makrown
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - "!out/**/*.map"
+mac:
+  target:
+    - dmg
+    - zip
+  artifactName: ${name}-${version}-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+    - deb
+  artifactName: ${name}-${version}-${arch}.${ext}
+win:
+  target:
+    - nsis
+  artifactName: ${name}-${version}-${arch}.${ext}
