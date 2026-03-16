@@ -230,6 +230,47 @@ o restante do app nao precise mudar.
 
 ---
 
+### Fase 11 — Git Integrado
+
+**Objetivo:** Interface visual completa de Git dentro do Makrown, inspirada no PHPStorm.
+
+- [ ] **Commit panel** — painel lateral com arquivos modificados/staged, campo de mensagem e botão de commit
+  - Listagem de `git status` (modified, untracked, staged, deleted)
+  - Stage/unstage individual ou em lote
+  - Escrever mensagem de commit com histórico de mensagens recentes
+  - Commitar via `git commit`
+- [ ] **Push / Pull / Fetch** — botões na toolbar ou painel Git
+  - `git push origin <branch>`
+  - `git pull --rebase origin <branch>`
+  - Indicador de "N commits à frente / N commits atrás"
+- [ ] **Gerenciamento de branches**
+  - Listar branches locais e remotas
+  - Criar nova branch a partir da atual
+  - Trocar de branch (com aviso se houver mudanças não commitadas)
+  - Merge e rebase de branches com feedback visual
+  - Deletar branch local/remota
+- [ ] **Log / Histórico de commits**
+  - Timeline de commits com hash, autor, data e mensagem
+  - Expandir commit para ver diff das alterações
+  - Filtro por branch, autor ou mensagem
+- [ ] **Blame** — ver quem escreveu cada linha do arquivo atual
+  - Integração na view do editor (coluna lateral com autor + data + hash)
+  - Click no blame abre o commit correspondente no log
+- [ ] **Conflict resolver** — interface visual para resolução de conflitos
+  - Exibe os três painéis: LOCAL / BASE / REMOTE
+  - Botões por hunk: aceitar local, aceitar remote, aceitar ambos
+  - Botão "Marcar como resolvido" ao concluir
+  - Integração com o DiffView já existente
+
+**Dependências técnicas:**
+- `simple-git` (Node.js) no Main Process para executar comandos git
+- IPC handlers para cada operação (`git:status`, `git:stage`, `git:commit`, `git:push`, etc.)
+- Novo painel lateral "Git" na Sidebar (alternativo ao painel de arquivos)
+
+**Entregável:** Fluxo completo de Git (status → stage → commit → push → log) sem sair do app.
+
+---
+
 ## Para Pensar / Backlog de Ideias
 
 Itens levantados durante o desenvolvimento que ainda nao tem fase definida.
@@ -275,6 +316,7 @@ busca por nome e conteudo, e filtra a arvore de forma inteligente.
 | 8      | Polish e UX         | ✅ Concluido      |
 | 9      | Conexao SSH/SFTP    | ✅ Concluido      |
 | 10     | Distribuicao        | ⬜ Nao iniciado   |
+| 11     | Git Integrado       | ⬜ Nao iniciado   |
 
 ---
 
