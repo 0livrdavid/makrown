@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="img/welcome.png" alt="Makrown" width="720" />
+  <img src="readme-readme-img/welcome.png" alt="Makrown" width="720" />
 
   <h1>Makrown</h1>
 
@@ -35,24 +35,24 @@ Makrown é um editor focado em produtividade para quem trabalha com arquivos Mar
 
 ## Capturas de tela
 
-<img src="img/editor.png" alt="Editor" width="100%" />
+<img src="readme-img/editor.png" alt="Editor" width="100%" />
 
 <br />
 
 <table>
   <tr>
     <td width="50%">
-      <img src="img/diff.png" alt="Diff visual" />
+      <img src="readme-img/diff.png" alt="Diff visual" />
       <p align="center"><sub>Diff lado a lado antes de enviar</sub></p>
     </td>
     <td width="50%">
-      <img src="img/vps.png" alt="Conexão VPS" />
+      <img src="readme-img/vps.png" alt="Conexão VPS" />
       <p align="center"><sub>Conexão via SSH/SFTP</sub></p>
     </td>
   </tr>
 </table>
 
-<img src="img/settings.png" alt="Configurações" width="100%" />
+<img src="readme-img/settings.png" alt="Configurações" width="100%" />
 
 ---
 
