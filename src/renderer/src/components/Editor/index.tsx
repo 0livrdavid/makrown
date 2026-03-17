@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Save, Upload, Loader2, X, FileText, GitCompare, PenLine, Eye, Settings, Send } from 'lucide-react'
 import { encode } from 'gpt-tokenizer'
 import { MilkdownEditor } from './MilkdownEditor'
@@ -239,6 +239,33 @@ export function Editor({
   autoSaveEnabled = false,
 }: EditorProps): React.JSX.Element {
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null
+  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
+
+  // Compute disambiguating suffixes for tabs that share the same file name.
+  // Shows the minimum parent directory needed to tell them apart.
+  const tabSuffix = useMemo(() => {
+    const suffixMap = new Map<string, string>()
+    const byName = new Map<string, OpenTab[]>()
+    for (const tab of tabs) {
+      const group = byName.get(tab.name) ?? []
+      group.push(tab)
+      byName.set(tab.name, group)
+    }
+    for (const [, group] of byName) {
+      if (group.length < 2) continue
+      // Walk parent segments until each tab has a unique suffix
+      const segments = group.map((t) => t.path.split('/').slice(0, -1).reverse())
+      for (let depth = 0; depth < 10; depth++) {
+        const suffixes = segments.map((s) => s.slice(0, depth + 1).reverse().join('/'))
+        const unique = new Set(suffixes).size === group.length
+        if (unique || depth === 9) {
+          group.forEach((t, i) => suffixMap.set(t.path, suffixes[i]))
+          break
+        }
+      }
+    }
+    return suffixMap
+  }, [tabs])
 
   // Inject a <style> tag to apply font with !important, reliably overriding Milkdown internals
   useEffect(() => {
@@ -296,6 +323,15 @@ export function Editor({
                 tabIndex={0}
                 onClick={() => onTabChange(tab.path)}
                 onKeyDown={(e) => e.key === 'Enter' && onTabChange(tab.path)}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  setTooltip({
+                    text: tab.type === 'diff' ? `diff: ${tab.diffOf}` : tab.path,
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 4,
+                  })
+                }}
+                onMouseLeave={() => setTooltip(null)}
                 className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 px-4 py-2.5 text-xs transition-colors select-none ${
                   isActive
                     ? 'bg-zinc-950 text-zinc-200'
@@ -305,12 +341,17 @@ export function Editor({
                 {isActive && (
                   <span className="absolute inset-x-0 top-0 h-px bg-indigo-500" />
                 )}
-                <span className="flex max-w-36 items-center gap-1 truncate font-medium">
+                <span className="flex max-w-48 items-center gap-1 truncate">
                   {tab.type === 'diff'
                     ? <GitCompare size={10} className="shrink-0 text-zinc-500" />
                     : tab.isDirty && <span className="mr-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
                   }
-                  {tab.name}
+                  <span className="flex flex-col truncate">
+                    <span className="truncate font-medium leading-tight">{tab.name}</span>
+                    {tabSuffix.has(tab.path) && (
+                      <span className="truncate text-[9px] font-normal leading-tight text-zinc-600">{tabSuffix.get(tab.path)}</span>
+                    )}
+                  </span>
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); onTabClose(tab.path) }}
@@ -323,25 +364,40 @@ export function Editor({
           })}
         </div>
 
+        {/* Tooltip — rendered outside the scroll container to avoid overflow issues */}
+        {tooltip && (
+          <div
+            className="pointer-events-none fixed z-50 rounded bg-zinc-800 px-2 py-1 text-[11px] leading-snug text-zinc-300 whitespace-nowrap shadow-lg"
+            style={{ left: tooltip.x, top: tooltip.y, transform: 'translateX(-50%)' }}
+          >
+            {tooltip.text}
+          </div>
+        )}
+
         {/* Draggable spacer — inherits drag from parent, fills remaining space */}
         <div className="flex-1" />
 
         {/* Enviar — visível no modo VPS apenas quando auto-save desativado */}
         {isRemote && !autoSaveEnabled && (
           <div className="flex shrink-0 items-center border-l border-zinc-800 px-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <button
-              onClick={onEnviar}
-              disabled={!tabs.some((t) => t.isDirty)}
-              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                tabs.some((t) => t.isDirty)
-                  ? 'text-indigo-400 hover:bg-zinc-800 hover:text-indigo-300'
-                  : 'cursor-default text-zinc-600'
-              }`}
-              title={tabs.some((t) => t.isDirty) ? 'Enviar alterações' : 'Nenhuma alteração pendente'}
-            >
-              <Send size={12} />
-              Enviar
-            </button>
+            {(() => {
+              const hasChanges = tabs.some((t) => t.isDirty) || pendingUploads.length > 0
+              return (
+                <button
+                  onClick={onEnviar}
+                  disabled={!hasChanges}
+                  className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                    hasChanges
+                      ? 'text-indigo-400 hover:bg-zinc-800 hover:text-indigo-300'
+                      : 'cursor-default text-zinc-600'
+                  }`}
+                  title={hasChanges ? 'Enviar alterações' : 'Nenhuma alteração pendente'}
+                >
+                  <Send size={12} />
+                  Enviar
+                </button>
+              )
+            })()}
           </div>
         )}
 
