@@ -215,7 +215,44 @@ o restante do app nao precise mudar.
 
 ---
 
-### Fase 10 — Build e Distribuicao
+### Fase 10 — Protecao de Dados Sensiveis ✅ (PRIORIDADE)
+
+**Objetivo:** Criptografar credenciais VPS e dados sensiveis usando `safeStorage` do Electron.
+
+- [x] Migrar perfis VPS de `localStorage` (texto plano) para `safeStorage` do Electron
+  - Host, usuario, porta, senha, chave SSH — tudo criptografado
+- [x] Criar IPC handlers para ler/salvar credenciais criptografadas (`credentials:get`, `credentials:set`, `credentials:list`, `credentials:delete`)
+- [x] Migrar dados existentes em localStorage para o formato criptografado (one-time migration)
+- [x] Garantir que nenhuma credencial sensivel apareca em logs ou console
+
+**Entregavel:** Perfis VPS armazenados com criptografia nativa do OS.
+
+---
+
+### Fase 11 — Preparacao para 1.0 ⬜
+
+**Objetivo:** Itens bloqueantes e importantes para o release 1.0.0.
+
+#### Bloqueantes
+
+- [x] **Error Boundary** — fallback UI para crashes do React ("algo deu errado, recarregar?")
+- [x] **Undo de delete** — ao deletar arquivo/pasta, permitir Ctrl+Z e botao "Reverter" no toast para desfazer
+- [ ] **Detecacao de edicao externa** — detectar quando arquivo aberto foi modificado fora do app e re-carregar automaticamente ✅ (implementado)
+- [x] **Code signing macOS** — assinatura + notarizacao para evitar "desenvolvedor nao identificado"
+- [x] **Empty states** — mensagens amigaveis para busca sem resultados, pasta vazia, sidebar sem arquivos
+- [x] **Acessibilidade basica** — `aria-label` em botoes com icone, focus trap em modais, `role="alert"` em toasts
+- [x] **Limite para arquivos grandes** — aviso ao abrir arquivos > 1MB, prevenir travamento do Milkdown
+
+#### Importantes (podem entrar em 1.0 ou 1.1)
+
+- [ ] **Light mode** — tema claro alternativo
+- [ ] **Renderizacao de imagens no preview** — imagens locais e remotas renderizadas no modo Visualize (em andamento)
+
+**Entregavel:** App estavel, seguro e pronto para distribuicao publica.
+
+---
+
+### Fase 12 — Build e Distribuicao ⬜
 
 **Objetivo:** Gerar executaveis para distribuicao.
 
@@ -230,7 +267,20 @@ o restante do app nao precise mudar.
 
 ---
 
-### Fase 11 — Git Integrado
+### Fase 13 — Testes ⬜
+
+**Objetivo:** Cobertura minima de testes para confianca em releases.
+
+- [ ] Testes unitarios do `diff.ts` (computeLineDiff, contentEquals)
+- [ ] Testes unitarios do filesystem abstraction layer
+- [ ] Testes E2E basicos (abrir pasta, editar, salvar, buscar)
+- [ ] CI pipeline para rodar testes automaticamente
+
+**Entregavel:** Suite de testes cobrindo fluxos criticos.
+
+---
+
+### Fase 14 — Git Integrado ⬜ (pos-1.0)
 
 **Objetivo:** Interface visual completa de Git dentro do Makrown, inspirada no PHPStorm.
 
@@ -310,13 +360,16 @@ As fases 1 a 7 compoem o **MVP funcional**:
 um app desktop que abre pastas locais, navega arquivos, edita markdown, renderiza preview,
 busca por nome e conteudo, e filtra a arvore de forma inteligente.
 
-| Fase   | Escopo              | Status            |
-| ------ | ------------------- | ----------------- |
-| 1 a 7  | MVP local completo  | ✅ Concluido      |
-| 8      | Polish e UX         | ✅ Concluido      |
-| 9      | Conexao SSH/SFTP    | ✅ Concluido      |
-| 10     | Distribuicao        | ⬜ Nao iniciado   |
-| 11     | Git Integrado       | ⬜ Nao iniciado   |
+| Fase   | Escopo                       | Status            |
+| ------ | ---------------------------- | ----------------- |
+| 1 a 7  | MVP local completo           | ✅ Concluido      |
+| 8      | Polish e UX                  | ✅ Concluido      |
+| 9      | Conexao SSH/SFTP             | ✅ Concluido      |
+| 10     | Protecao de dados sensiveis  | ⬜ PRIORIDADE     |
+| 11     | Preparacao para 1.0          | ⬜ Nao iniciado   |
+| 12     | Build e distribuicao         | ⬜ Nao iniciado   |
+| 13     | Testes                       | ⬜ Nao iniciado   |
+| 14     | Git Integrado                | ⬜ Nao iniciado   |
 
 ---
 

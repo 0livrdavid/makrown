@@ -4,6 +4,8 @@ directories:
   buildResources: build
   output: dist
 npmRebuild: false
+asarUnpack:
+  - "**/node_modules/node-pty/**"
 files:
   - out/**/*
   - "!out/**/*.map"
@@ -12,16 +14,24 @@ publish:
   owner: 0livrdavid
   repo: makrown
 mac:
+  icon: build/icon.icns
   target:
     - dmg
     - zip
   artifactName: ${name}-${version}-${arch}.${ext}
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  notarize: true
 linux:
   target:
     - AppImage
     - deb
   artifactName: ${name}-${version}-${arch}.${ext}
 win:
+  icon: build/icon.ico
   target:
     - nsis
   artifactName: ${name}-${version}-${arch}.${ext}

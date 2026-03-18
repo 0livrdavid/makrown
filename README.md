@@ -1,10 +1,7 @@
 <div align="center">
-  <img src="readme-readme-img/welcome.png" alt="Makrown" width="720" />
-
   <h1>Makrown</h1>
-
+  <img src="readme-img/welcome.png" alt="Makrown" width="720" />
   <p>Editor de Markdown desktop com suporte nativo a servidores VPS via SSH.</p>
-
   <a href="https://github.com/0livrdavid/makrown/releases/latest">
     <img src="https://img.shields.io/github/v/release/0livrdavid/makrown?style=flat-square&label=download&color=6366f1" alt="Download" />
   </a>
@@ -12,11 +9,11 @@
   <img src="https://img.shields.io/badge/license-MIT-zinc?style=flat-square" alt="License" />
 </div>
 
----
+***
 
 Makrown é um editor focado em produtividade para quem trabalha com arquivos Markdown — localmente ou em servidores remotos. Abre pastas, edita com WYSIWYG, visualiza diff antes de enviar e sincroniza com sua VPS sem precisar de nenhuma configuração no servidor.
 
----
+***
 
 ## Download
 
@@ -31,7 +28,7 @@ Makrown é um editor focado em produtividade para quem trabalha com arquivos Mar
 
 > Não é necessário instalar Node.js, Git ou qualquer dependência. Só baixar e abrir.
 
----
+***
 
 ## Capturas de tela
 
@@ -54,42 +51,63 @@ Makrown é um editor focado em produtividade para quem trabalha com arquivos Mar
 
 <img src="readme-img/settings.png" alt="Configurações" width="100%" />
 
----
+***
 
 ## Funcionalidades
 
 ### Editor
-- Edição WYSIWYG com Markdown completo (GFM, LaTeX, tabelas, blocos de código)
-- Múltiplas abas abertas simultaneamente
-- Preview renderizado ao lado
-- Indicador de arquivo modificado (•) nas abas
-- Drafts automáticos — seu trabalho nunca é perdido
+
+* Edição WYSIWYG com Markdown completo (GFM, LaTeX, tabelas, blocos de código)
+
+* Múltiplas abas abertas simultaneamente
+
+* Preview renderizado ao lado
+
+* Indicador de arquivo modificado (•) nas abas
+
+* Drafts automáticos — seu trabalho nunca é perdido
 
 ### Pastas e Navegação
-- Abre qualquer pasta local como projeto
-- Árvore de arquivos com filtro inteligente (ignora `node_modules`, `.git`, etc.)
-- Busca por nome de arquivo e por conteúdo
-- Criar, renomear e deletar arquivos e pastas
+
+* Abre qualquer pasta local como projeto
+
+* Árvore de arquivos com filtro inteligente (ignora `node_modules`, `.git`, etc.)
+
+* Busca por nome de arquivo e por conteúdo
+
+* Criar, renomear e deletar arquivos e pastas
 
 ### VPS / SSH
-- Conexão direta via SSH/SFTP — zero configuração no servidor
-- Perfis de conexão salvos — conecte com um clique
-- Reconexão automática em caso de queda (3 tentativas)
-- Indicador de status da conexão em tempo real
-- Auto-save configurável (envia automaticamente para a VPS ao salvar)
+
+* Conexão direta via SSH/SFTP — zero configuração no servidor
+
+* Perfis de conexão salvos — conecte com um clique
+
+* Reconexão automática em caso de queda (3 tentativas)
+
+* Indicador de status da conexão em tempo real
+
+* Auto-save configurável (envia automaticamente para a VPS ao salvar)
 
 ### Diff e Envio
-- Painel de alterações na sidebar — veja o que mudou antes de enviar
-- Diff visual lado a lado (modificado vs. original)
-- Envio seletivo por arquivo ou em lote
-- Alterações persistidas localmente mesmo após fechar o app
+
+* Painel de alterações na sidebar — veja o que mudou antes de enviar
+
+* Diff visual lado a lado (modificado vs. original)
+
+* Envio seletivo por arquivo ou em lote
+
+* Alterações persistidas localmente mesmo após fechar o app
 
 ### Personalização
-- Fonte, família e tamanho configuráveis
-- Zoom global com `Cmd +` / `Cmd -`
-- Interface 100% dark
 
----
+* Fonte, família e tamanho configuráveis
+
+* Zoom global com `Cmd +` / `Cmd -`
+
+* Interface 100% dark
+
+***
 
 ## Para desenvolvedores
 
@@ -119,7 +137,7 @@ npm run package
 | Estilização | Tailwind CSS           |
 | Build       | electron-builder       |
 
----
+***
 
 ## Licença
 

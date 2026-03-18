@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Server, X, Eye, EyeOff, Loader2, AlertCircle, ChevronRight, Folder, ArrowLeft, Check, CornerDownLeft, Trash2, BookMarked } from 'lucide-react'
-import type { SSHConfig } from '../../../../shared/types'
+import type { SSHConfig, SSHProfileSummary } from '../../../../shared/types'
 import type { FileEntry } from '../../../../shared/types'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 
 // ─── Saved profiles list ──────────────────────────────────────────────────────
 
@@ -10,16 +11,16 @@ function SavedProfiles({
   onSelect,
   onDelete,
 }: {
-  profiles: SSHConfig[]
-  onSelect: (profile: SSHConfig) => void
-  onDelete: (index: number) => void
+  profiles: SSHProfileSummary[]
+  onSelect: (profile: SSHProfileSummary) => void
+  onDelete: (id: string) => void
 }): React.JSX.Element | null {
   if (profiles.length === 0) return null
   return (
     <div className="border-b border-zinc-700 px-5 py-3 space-y-1">
       <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wide mb-2">Conexões salvas</p>
-      {profiles.map((profile, i) => (
-        <div key={i} className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-700/60 transition-colors">
+      {profiles.map((profile) => (
+        <div key={profile.id} className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-700/60 transition-colors">
           <button
             onClick={() => onSelect(profile)}
             className="flex flex-1 items-center gap-2.5 min-w-0"
@@ -35,9 +36,10 @@ function SavedProfiles({
             </div>
           </button>
           <button
-            onClick={() => onDelete(i)}
+            onClick={() => onDelete(profile.id)}
             className="shrink-0 rounded p-1 text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
             title="Remover"
+            aria-label={`Remover conexão ${profile.label || profile.host}`}
           >
             <Trash2 size={12} />
           </button>
@@ -157,6 +159,7 @@ function ConnectStep({
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
               >
                 {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
               </button>
@@ -283,6 +286,7 @@ function BrowseStep({
             onClick={handleUrlSubmit}
             title="Navegar para o caminho (Enter)"
             className="shrink-0 rounded p-0.5 text-zinc-600 hover:text-zinc-300 transition-colors"
+            aria-label="Navegar para o caminho digitado"
           >
             <CornerDownLeft size={12} />
           </button>
@@ -373,26 +377,25 @@ function BrowseStep({
 export function SSHConnectionModal({ onConnect, onClose, initialConfig }: SSHConnectionModalProps): React.JSX.Element {
   const [step, setStep] = useState<'connect' | 'browse'>('connect')
   const [config, setConfig] = useState<SSHConfig>(initialConfig ?? DEFAULT_CONFIG)
-  const [savedProfiles, setSavedProfiles] = useState<SSHConfig[]>([])
+  const [savedProfiles, setSavedProfiles] = useState<SSHProfileSummary[]>([])
+  const dialogRef = useModalFocusTrap({ onClose: handleClose })
 
   useEffect(() => {
-    window.api.prefs.get<SSHConfig[]>('savedSSHConnections').then((profiles) => {
-      setSavedProfiles(profiles ?? [])
-    })
+    window.api.credentials.list().then(setSavedProfiles).catch(() => setSavedProfiles([]))
   }, [])
 
   function handleChange<K extends keyof SSHConfig>(key: K, value: SSHConfig[K]): void {
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
-  function handleSelectProfile(profile: SSHConfig): void {
-    setConfig(profile)
+  async function handleSelectProfile(profile: SSHProfileSummary): Promise<void> {
+    const full = await window.api.credentials.get(profile.id)
+    if (full) setConfig(full)
   }
 
-  async function handleDeleteProfile(index: number): Promise<void> {
-    const updated = savedProfiles.filter((_, i) => i !== index)
-    setSavedProfiles(updated)
-    await window.api.prefs.set('savedSSHConnections', updated)
+  async function handleDeleteProfile(id: string): Promise<void> {
+    setSavedProfiles((prev) => prev.filter((p) => p.id !== id))
+    await window.api.credentials.delete(id)
   }
 
   async function handleConnect(): Promise<void> {
@@ -408,19 +411,6 @@ export function SSHConnectionModal({ onConnect, onClose, initialConfig }: SSHCon
 
   async function handleConfirm(remotePath: string): Promise<void> {
     const finalConfig = { ...config, remotePath }
-
-    // Auto-save profile if it has a label and isn't already saved
-    if (finalConfig.label.trim()) {
-      const alreadyExists = savedProfiles.some(
-        (p) => p.host === finalConfig.host && p.port === finalConfig.port && p.username === finalConfig.username
-      )
-      if (!alreadyExists) {
-        const updated = [...savedProfiles, finalConfig]
-        setSavedProfiles(updated)
-        await window.api.prefs.set('savedSSHConnections', updated)
-      }
-    }
-
     onConnect(finalConfig, remotePath)
   }
 
@@ -433,18 +423,29 @@ export function SSHConnectionModal({ onConnect, onClose, initialConfig }: SSHCon
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="flex w-[460px] flex-col rounded-xl border border-zinc-700 bg-zinc-800 shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ssh-modal-title"
+        tabIndex={-1}
+        className="flex w-[460px] flex-col rounded-xl border border-zinc-700 bg-zinc-800 shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-700 px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600/20">
               <Server size={14} className="text-indigo-400" />
             </div>
-            <span className="text-sm font-semibold text-zinc-100">
+            <span id="ssh-modal-title" className="text-sm font-semibold text-zinc-100">
               {step === 'connect' ? 'Conectar via VPS' : 'Selecionar pasta remota'}
             </span>
           </div>
-          <button onClick={handleClose} className="rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 transition-colors">
+          <button
+            onClick={handleClose}
+            className="rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 transition-colors"
+            aria-label="Fechar conexão VPS"
+          >
             <X size={14} />
           </button>
         </div>

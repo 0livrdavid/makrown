@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 
 interface ShortcutsModalProps {
   onClose: () => void
@@ -68,18 +69,28 @@ function KeyBadge({ children }: { children: string }): React.JSX.Element {
 }
 
 export function ShortcutsModal({ onClose }: ShortcutsModalProps): React.JSX.Element {
+  const dialogRef = useModalFocusTrap({ onClose })
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="flex w-[520px] max-h-[80vh] flex-col rounded-xl border border-zinc-700 bg-zinc-800 shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shortcuts-title"
+        tabIndex={-1}
+        className="flex w-[520px] max-h-[80vh] flex-col rounded-xl border border-zinc-700 bg-zinc-800 shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-700 px-5 py-4">
-          <span className="text-sm font-semibold text-zinc-100">Atalhos de teclado</span>
+          <span id="shortcuts-title" className="text-sm font-semibold text-zinc-100">Atalhos de teclado</span>
           <button
             onClick={onClose}
             className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+            aria-label="Fechar atalhos de teclado"
           >
             <X size={14} />
           </button>

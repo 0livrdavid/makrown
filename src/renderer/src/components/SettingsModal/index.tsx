@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { ChevronLeft, Type, FolderTree, Server, RefreshCw } from 'lucide-react'
+import { ChevronLeft, Type, FolderTree, Server, RefreshCw, GitCompare } from 'lucide-react'
 import type { EditorPrefs } from '../Editor'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 
 export interface VpsPrefs {
   autoSaveEnabled: boolean
@@ -14,11 +15,13 @@ interface SettingsPageProps {
   isRemote?: boolean
   vpsPrefs?: VpsPrefs
   onVpsPrefsChange?: (prefs: VpsPrefs) => void
+  localDiffEnabled?: boolean
+  onLocalDiffChange?: (enabled: boolean) => void
 }
 
 // ─── Static data ────────────────────────────────────────────────────────────
 
-type SectionId = 'fonte' | 'navegacao' | 'vps' | 'atualizacoes'
+type SectionId = 'fonte' | 'navegacao' | 'alteracoes' | 'vps' | 'atualizacoes'
 
 interface NavItem { id: SectionId; label: string; description: string; icon: React.ElementType }
 interface NavGroup { group: string; items: NavItem[] }
@@ -26,7 +29,10 @@ interface NavGroup { group: string; items: NavItem[] }
 const NAV_BASE: NavGroup[] = [
   {
     group: 'Editor',
-    items: [{ id: 'fonte', label: 'Fonte', description: 'Família e tamanho', icon: Type }],
+    items: [
+      { id: 'fonte', label: 'Fonte', description: 'Família e tamanho', icon: Type },
+      { id: 'alteracoes', label: 'Alterações', description: 'Rastreamento local', icon: GitCompare },
+    ],
   },
   {
     group: 'Árvore de arquivos',
@@ -178,6 +184,48 @@ function FontSection({
         <p className="mb-2.5 text-xs font-medium text-zinc-400">Pré-visualização</p>
         <EditorPreview fontFamily={currentFontFamily} fontSize={editorPrefs.fontSize} />
       </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-medium text-zinc-300">Modo Raw</p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">
+            Exibe um terceiro botão na barra do editor para editar o markdown puro
+          </p>
+        </div>
+        <button
+          onClick={() => onChange({ ...editorPrefs, rawModeEnabled: !editorPrefs.rawModeEnabled })}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+            editorPrefs.rawModeEnabled ? 'bg-indigo-600' : 'bg-zinc-600'
+          }`}
+          role="switch"
+          aria-checked={editorPrefs.rawModeEnabled}
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+              editorPrefs.rawModeEnabled ? 'translate-x-4' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className={editorPrefs.rawModeEnabled ? '' : 'pointer-events-none opacity-40'}>
+        <p className="mb-2.5 text-xs font-medium text-zinc-400">Tamanho do Tab (modo raw)</p>
+        <div className="flex gap-2">
+          {[2, 4, 8].map((n) => (
+            <button
+              key={n}
+              onClick={() => onChange({ ...editorPrefs, tabSize: n })}
+              className={`flex h-8 w-10 items-center justify-center rounded-lg border text-xs font-medium transition-colors ${
+                editorPrefs.tabSize === n
+                  ? 'border-indigo-500 bg-indigo-600/10 text-indigo-300'
+                  : 'border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-700/40'
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -242,6 +290,43 @@ function NavigationSection(): React.JSX.Element {
 const DELAY_MIN = 5
 const DELAY_MAX = 120
 const DELAY_STEP = 5
+
+function DiffTrackingSection({
+  enabled,
+  onChange,
+}: {
+  enabled: boolean
+  onChange: (enabled: boolean) => void
+}): React.JSX.Element {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-sm font-semibold text-zinc-100">Alterações</h2>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-medium text-zinc-300">Rastrear alterações em projetos locais</p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">
+            Mostra o painel de alterações na sidebar e permite visualizar diffs
+          </p>
+        </div>
+        <button
+          onClick={() => onChange(!enabled)}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+            enabled ? 'bg-indigo-600' : 'bg-zinc-600'
+          }`}
+          role="switch"
+          aria-checked={enabled}
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+              enabled ? 'translate-x-4' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function VpsSection({
   vpsPrefs,
@@ -356,6 +441,12 @@ function UpdateSection(): React.JSX.Element {
       </div>
 
       {/* Status messages */}
+      {state.kind === 'up-to-date' && (
+        <div className="rounded-lg border border-emerald-700/50 bg-emerald-600/10 px-4 py-3">
+          <p className="text-xs font-medium text-emerald-300">Você está na versão mais recente</p>
+          <p className="mt-0.5 text-[11px] text-emerald-400/70">Nenhuma atualização disponível no momento.</p>
+        </div>
+      )}
       {state.kind === 'available' && (
         <div className="rounded-lg border border-indigo-700/50 bg-indigo-600/10 px-4 py-3">
           <p className="text-xs font-medium text-indigo-300">
@@ -433,12 +524,20 @@ function UpdateSection(): React.JSX.Element {
 
 // ─── Full-screen settings page ────────────────────────────────────────────────
 
-export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRemote, vpsPrefs, onVpsPrefsChange }: SettingsPageProps): React.JSX.Element {
+export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRemote, vpsPrefs, onVpsPrefsChange, localDiffEnabled = true, onLocalDiffChange }: SettingsPageProps): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SectionId>('fonte')
   const nav = [...NAV_BASE, NAV_VPS, NAV_APP]
+  const dialogRef = useModalFocusTrap({ onClose })
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      tabIndex={-1}
+      className="flex h-screen flex-col bg-zinc-950 text-zinc-100"
+    >
 
       {/* Top bar — draggable, traffic light clearance */}
       <div
@@ -456,7 +555,7 @@ export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRem
         </button>
 
         {/* Title — centered, draggable */}
-        <span className="flex-1 text-center text-xs font-semibold text-zinc-300">
+        <span id="settings-title" className="flex-1 text-center text-xs font-semibold text-zinc-300">
           Configurações
         </span>
 
@@ -511,6 +610,9 @@ export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRem
             )}
             {activeSection === 'navegacao' && (
               <NavigationSection />
+            )}
+            {activeSection === 'alteracoes' && onLocalDiffChange && (
+              <DiffTrackingSection enabled={localDiffEnabled} onChange={onLocalDiffChange} />
             )}
             {activeSection === 'vps' && vpsPrefs && onVpsPrefsChange && (
               <VpsSection vpsPrefs={vpsPrefs} onChange={onVpsPrefsChange} />

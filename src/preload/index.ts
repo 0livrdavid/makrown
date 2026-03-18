@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from 'electron'
-import type { FileSystemResult, FileEntry, SearchFileResult, SearchContentResult } from '../shared/types'
+import type { DeleteUndoInfo, FileSystemResult, FileEntry, FileStatInfo, SearchFileResult, SearchContentResult, SSHProfileSummary, SSHConfig } from '../shared/types'
 
 const api = {
   platform: process.platform,
@@ -11,6 +11,9 @@ const api = {
 
     listDir: (dirPath: string): Promise<FileSystemResult<FileEntry[]>> =>
       ipcRenderer.invoke('fs:listDir', dirPath),
+
+    stat: (targetPath: string): Promise<FileSystemResult<FileStatInfo>> =>
+      ipcRenderer.invoke('fs:stat', targetPath),
 
     readFile: (filePath: string): Promise<FileSystemResult<string>> =>
       ipcRenderer.invoke('fs:readFile', filePath),
@@ -27,8 +30,14 @@ const api = {
     rename: (oldPath: string, newPath: string): Promise<FileSystemResult<void>> =>
       ipcRenderer.invoke('fs:rename', oldPath, newPath),
 
-    delete: (targetPath: string): Promise<FileSystemResult<void>> =>
+    delete: (targetPath: string): Promise<FileSystemResult<DeleteUndoInfo>> =>
       ipcRenderer.invoke('fs:delete', targetPath),
+
+    undoDelete: (undoId: string): Promise<FileSystemResult<void>> =>
+      ipcRenderer.invoke('fs:undoDelete', undoId),
+
+    clearDeleteUndo: (): Promise<FileSystemResult<void>> =>
+      ipcRenderer.invoke('fs:clearDeleteUndo'),
 
     searchFiles: (rootPath: string, query: string): Promise<FileSystemResult<SearchFileResult[]>> =>
       ipcRenderer.invoke('fs:searchFiles', rootPath, query),
@@ -46,6 +55,12 @@ const api = {
       const handler = (_event: Electron.IpcRendererEvent, dirPath: string): void => callback(dirPath)
       ipcRenderer.on('fs:changed', handler)
       return () => ipcRenderer.removeListener('fs:changed', handler)
+    },
+
+    onFileChanged: (callback: (filePath: string) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, filePath: string): void => callback(filePath)
+      ipcRenderer.on('fs:file-changed', handler)
+      return () => ipcRenderer.removeListener('fs:file-changed', handler)
     }
   },
 
@@ -74,6 +89,23 @@ const api = {
     }
   },
 
+  credentials: {
+    list: (): Promise<SSHProfileSummary[]> =>
+      ipcRenderer.invoke('credentials:list'),
+
+    get: (id: string): Promise<SSHConfig | null> =>
+      ipcRenderer.invoke('credentials:get', id),
+
+    set: (config: SSHConfig): Promise<{ id: string }> =>
+      ipcRenderer.invoke('credentials:set', config),
+
+    save: (config: SSHConfig): Promise<{ id: string }> =>
+      ipcRenderer.invoke('credentials:save', config),
+
+    delete: (id: string): Promise<void> =>
+      ipcRenderer.invoke('credentials:delete', id),
+  },
+
   prefs: {
     get: <T>(key: string): Promise<T> => ipcRenderer.invoke('prefs:get', key),
     set: (key: string, value: unknown): Promise<void> =>
@@ -83,6 +115,36 @@ const api = {
   zoom: {
     setFactor: (factor: number): void => webFrame.setZoomFactor(factor),
     getFactor: (): number => webFrame.getZoomFactor(),
+  },
+
+  terminal: {
+    create: (opts: { terminalId: string; sessionId: string; cwd: string; cols: number; rows: number; mode: 'local' | 'vps' }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('term:create', opts),
+
+    input: (terminalId: string, sessionId: string, data: string): void =>
+      ipcRenderer.send('term:input', terminalId, sessionId, data),
+
+    resize: (terminalId: string, sessionId: string, cols: number, rows: number): void =>
+      ipcRenderer.send('term:resize', terminalId, sessionId, cols, rows),
+
+    close: (terminalId: string, sessionId: string): Promise<void> =>
+      ipcRenderer.invoke('term:close', terminalId, sessionId),
+
+    onOutput: (terminalId: string, sessionId: string, callback: (data: string) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, id: string, eventSessionId: string, data: string): void => {
+        if (id === terminalId && eventSessionId === sessionId) callback(data)
+      }
+      ipcRenderer.on('term:output', handler)
+      return () => ipcRenderer.removeListener('term:output', handler)
+    },
+
+    onExit: (terminalId: string, sessionId: string, callback: (code: number) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, id: string, eventSessionId: string, code: number): void => {
+        if (id === terminalId && eventSessionId === sessionId) callback(code)
+      }
+      ipcRenderer.on('term:exit', handler)
+      return () => ipcRenderer.removeListener('term:exit', handler)
+    },
   },
 
   updater: {

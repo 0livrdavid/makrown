@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Save, Upload, Loader2, X, FileText, GitCompare, PenLine, Eye, Settings, Send } from 'lucide-react'
+import { Save, Upload, Loader2, X, FileText, GitCompare, PenLine, Eye, Settings, Send, Terminal } from 'lucide-react'
 import { encode } from 'gpt-tokenizer'
 import { MilkdownEditor } from './MilkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
@@ -16,13 +16,17 @@ export interface OpenTab {
   isUploading: boolean
   diffOf?: string        // only for type === 'diff': path of the source file
   contentVersion?: number // increment to force EditorPane remount after programmatic edit
+  isLargeFile?: boolean
+  fileSizeBytes?: number
 }
 
-export type LayoutMode = 'editor' | 'visualize'
+export type LayoutMode = 'editor' | 'visualize' | 'raw'
 
 export interface EditorPrefs {
   fontFamily: 'sans' | 'serif' | 'mono'
   fontSize: number
+  rawModeEnabled: boolean
+  tabSize: number
 }
 
 const FONT_FAMILY_MAP: Record<EditorPrefs['fontFamily'], string> = {
@@ -46,6 +50,8 @@ interface EditorProps {
   editorPrefs: EditorPrefs
   onEditorPrefsChange: (prefs: EditorPrefs) => void
   onOpenSettings: () => void
+  onToggleTerminal: () => void
+  terminalOpen: boolean
   onEnviar: () => void
   onEnviarFile: (path: string) => Promise<void>
   onNormalized: (path: string, normalizedContent: string) => void
@@ -71,6 +77,7 @@ function EditorPane({
   isRemote: boolean
 }): React.JSX.Element {
   const contentRef = useRef(tab.content)
+  const effectiveLayout: LayoutMode = tab.isLargeFile ? 'raw' : layout
 
   const handleChange = useCallback(
     (value: string) => {
@@ -101,13 +108,42 @@ function EditorPane({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleSave, isRemote])
 
-  if (layout === 'visualize') {
+  if (effectiveLayout === 'raw') {
+    const indent = ' '.repeat(editorPrefs.tabSize)
+    return (
+      <textarea
+        className="h-full w-full resize-none bg-zinc-950 p-8 font-mono text-zinc-300 outline-none"
+        style={{ fontSize: editorPrefs.fontSize, lineHeight: 1.7 }}
+        value={tab.content}
+        onChange={(e) => handleChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Tab') {
+            e.preventDefault()
+            const el = e.currentTarget
+            const start = el.selectionStart
+            const end = el.selectionEnd
+            const next = el.value.substring(0, start) + indent + el.value.substring(end)
+            handleChange(next)
+            requestAnimationFrame(() => {
+              el.selectionStart = el.selectionEnd = start + indent.length
+            })
+          }
+        }}
+        spellCheck={false}
+      />
+    )
+  }
+
+  if (effectiveLayout === 'visualize') {
+    // Derive directory from the file path for resolving relative image references
+    const fileDir = tab.path.includes('/') ? tab.path.substring(0, tab.path.lastIndexOf('/')) : undefined
     return (
       <div className="h-full overflow-hidden">
         <MarkdownPreview
           content={tab.content}
           fontFamily={FONT_FAMILY_MAP[editorPrefs.fontFamily]}
           fontSize={editorPrefs.fontSize}
+          fileDir={fileDir}
         />
       </div>
     )
@@ -131,12 +167,16 @@ function ActionBar({
   onLayoutChange,
   onSave,
   isRemote,
+  rawModeEnabled,
+  isLargeFile,
 }: {
   tab: OpenTab
   layoutMode: LayoutMode
   onLayoutChange: (mode: LayoutMode) => void
   onSave: (path: string, content: string) => Promise<void>
   isRemote: boolean
+  rawModeEnabled: boolean
+  isLargeFile?: boolean
 }): React.JSX.Element {
   const stats = useMemo(() => {
     const text = tab.content.trim()
@@ -148,30 +188,43 @@ function ActionBar({
   }, [tab.content])
 
   const fileSize = useMemo(() => {
-    const b = stats.bytes
+    const b = tab.fileSizeBytes ?? stats.bytes
     if (b < 1024) return `${b} B`
     if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
     return `${(b / (1024 * 1024)).toFixed(1)} MB`
-  }, [stats.bytes])
+  }, [stats.bytes, tab.fileSizeBytes])
+
+  const effectiveLayoutMode: LayoutMode = isLargeFile ? 'raw' : layoutMode
+  const layoutOptions: [LayoutMode, React.ElementType, string][] = isLargeFile
+    ? [['raw', FileText, 'Raw']]
+    : [
+        ['editor', PenLine, 'Editor'],
+        ['visualize', Eye, 'Visualize'],
+        ...(rawModeEnabled ? ([['raw', FileText, 'Raw']] as [LayoutMode, React.ElementType, string][]) : []),
+      ]
 
   return (
     <div className="flex shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-950 px-4 py-1.5">
       {/* Word / char count */}
-      <span className="text-[11px] text-zinc-600 select-none tabular-nums">
-        {stats.words} {stats.words === 1 ? 'palavra' : 'palavras'} · {stats.chars} {stats.chars === 1 ? 'caractere' : 'caracteres'} · {fileSize} · {stats.tokens.toLocaleString()} tokens
-      </span>
+      <div className="flex items-center gap-2 text-[11px] tabular-nums text-zinc-600 select-none">
+        <span>
+          {stats.words} {stats.words === 1 ? 'palavra' : 'palavras'} · {stats.chars} {stats.chars === 1 ? 'caractere' : 'caracteres'} · {fileSize} · {stats.tokens.toLocaleString()} tokens
+        </span>
+        {isLargeFile && (
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
+            Arquivo grande · modo seguro
+          </span>
+        )}
+      </div>
 
       <div className="flex items-center gap-2">
         {/* Layout toggle */}
         <div className="flex items-center gap-0.5 rounded-md bg-zinc-900 p-0.5 ring-1 ring-zinc-800">
-          {([
-            ['editor', PenLine, 'Editor'],
-            ['visualize', Eye, 'Visualize'],
-          ] as [LayoutMode, React.ElementType, string][]).map(([mode, Icon, label]) => (
+          {layoutOptions.map(([mode, Icon, label]) => (
             <button
               key={mode}
               onClick={() => onLayoutChange(mode)}
-              className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${layoutMode === mode ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${effectiveLayoutMode === mode ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
               <Icon size={11} />
               {label}
@@ -232,6 +285,8 @@ export function Editor({
   editorPrefs,
   onEditorPrefsChange: _onEditorPrefsChange,
   onOpenSettings,
+  onToggleTerminal,
+  terminalOpen,
   onEnviar,
   onEnviarFile,
   onNormalized,
@@ -356,6 +411,7 @@ export function Editor({
                 <button
                   onClick={(e) => { e.stopPropagation(); onTabClose(tab.path) }}
                   className="ml-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 hover:bg-zinc-700"
+                  aria-label={`Fechar aba ${tab.name}`}
                 >
                   <X size={10} />
                 </button>
@@ -401,12 +457,21 @@ export function Editor({
           </div>
         )}
 
-        {/* Settings gear — always visible on the right */}
-        <div className="flex shrink-0 items-center border-l border-zinc-800 px-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {/* Terminal + Settings — always visible on the right */}
+        <div className="flex shrink-0 items-center gap-0.5 border-l border-zinc-800 px-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <button
+            onClick={onToggleTerminal}
+            className={`rounded p-1.5 transition-colors hover:bg-zinc-700 ${terminalOpen ? 'text-indigo-400' : 'text-zinc-600 hover:text-zinc-300'}`}
+            title="Terminal (Ctrl+`)"
+            aria-label="Abrir terminal"
+          >
+            <Terminal size={13} />
+          </button>
           <button
             onClick={onOpenSettings}
             className="rounded p-1.5 text-zinc-600 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
             title="Configurações"
+            aria-label="Abrir configurações"
           >
             <Settings size={13} />
           </button>
@@ -428,6 +493,8 @@ export function Editor({
               onLayoutChange={onLayoutChange}
               onSave={onSave}
               isRemote={isRemote}
+              rawModeEnabled={editorPrefs.rawModeEnabled}
+              isLargeFile={activeTab.isLargeFile}
             />
           )}
 
@@ -450,6 +517,7 @@ export function Editor({
                         modified={sourceTab.content}
                         original={sourceTab.originalContent}
                         isUploading={sourceTab.isUploading}
+                        isRemote={isRemote}
                         onEnviarFile={onEnviarFile}
                         onContentChange={(newContent) => onDiffRevert(tab.diffOf!, newContent)}
                         onOriginalChange={(newOriginal) => onDiffAccept(tab.diffOf!, newOriginal)}

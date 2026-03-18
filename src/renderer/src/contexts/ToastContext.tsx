@@ -1,8 +1,8 @@
 import { createContext, useContext } from 'react'
-import type { ToastType } from '../hooks/useToast'
+import type { ToastOptions, ToastType } from '../hooks/useToast'
 
 interface ToastContextValue {
-  addToast: (message: string, type?: ToastType) => void
+  addToast: (message: string, type?: ToastType, options?: ToastOptions) => void
 }
 
 export const ToastContext = createContext<ToastContextValue>({ addToast: () => {} })

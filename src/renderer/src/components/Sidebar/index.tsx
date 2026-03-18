@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { FilePlus, FolderPlus, RefreshCw, Trash2, Filter, LogOut, ChevronsDownUp, ChevronDown, ChevronRight, GitCompare, FileText as FileIcon } from 'lucide-react'
-import { useFileTree, type TreeNode } from '../../hooks/useFileTree'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FilePlus, FolderPlus, RefreshCw, Trash2, Filter, LogOut, ChevronsDownUp, ChevronDown, ChevronRight, GitCompare, FileText as FileIcon, FolderSearch, RotateCcw } from 'lucide-react'
+import { useFileTree, type DeletedNodeUndo, type TreeNode } from '../../hooks/useFileTree'
 import type { OpenTab } from '../Editor'
 import { FileTreeNode } from './FileTreeNode'
 import { FilterModal } from './FilterModal'
@@ -8,7 +8,8 @@ import { FolderSelect } from './FolderSelect'
 import { LoadingScreen } from '../LoadingScreen'
 import { DEFAULT_FILTER, shouldShowNode, type FilterConfig } from './filterUtils'
 import { useToastContext } from '../../contexts/ToastContext'
-import type { SSHConfig } from '../../../../shared/types'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
+import type { SSHProfileSummary } from '../../../../shared/types'
 
 const PREFETCH_DEPTH_KEY = 'makrown:prefetch-depth'
 const DEFAULT_PREFETCH_DEPTH = 3
@@ -29,15 +30,16 @@ interface SidebarProps {
   onOpenFolder: (path: string) => void
   onPickFolder: () => void
   onConnectVPS: () => void
-  onConnectRecentVPS: (config: SSHConfig) => void
-  onEditVPS: (config: SSHConfig) => void
+  onConnectRecentVPS: (summary: SSHProfileSummary) => void
+  onEditVPS: (summary: SSHProfileSummary) => void
   onDisconnect?: () => void
   onExit: () => void
   isRemote: boolean
   recentFolders: string[]
-  recentVPS: SSHConfig[]
-  activeSSHConfig: SSHConfig | null
+  recentVPS: SSHProfileSummary[]
+  activeSSHConfig: SSHProfileSummary | null
   sshStatus?: 'connected' | 'reconnecting' | 'disconnected'
+  showDirtyPanel?: boolean
   dirtyTabs?: OpenTab[]
   onOpenDiff?: (filePath: string) => void
   onOpenFile?: (filePath: string) => void
@@ -59,11 +61,12 @@ export function Sidebar({
   recentVPS,
   activeSSHConfig,
   sshStatus,
+  showDirtyPanel = false,
   dirtyTabs = [],
   onOpenDiff,
   onOpenFile,
 }: SidebarProps): React.JSX.Element {
-  const { tree, loadRoot, toggleExpand, collapseAll, peekDir, watchRefresh, createFile, createDir, rename, deleteNode } =
+  const { tree, loadRoot, toggleExpand, collapseAll, peekDir, watchRefresh, createFile, createDir, rename, deleteNode, undoDelete } =
     useFileTree()
 
   const { addToast } = useToastContext()
@@ -85,6 +88,8 @@ export function Sidebar({
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [filterConfig, setFilterConfig] = useState<FilterConfig>(() => loadSavedFilter(rootPath))
   const [dirtyPanelOpen, setDirtyPanelOpen] = useState(true)
+  const [deletedStack, setDeletedStack] = useState<DeletedNodeUndo[]>([])
+  const deleteModalRef = useModalFocusTrap({ onClose: () => setDeletingNode(null) })
 
   const isFilterModified = JSON.stringify(filterConfig) !== JSON.stringify(DEFAULT_FILTER)
   const treeRef = useRef(tree)
@@ -97,6 +102,10 @@ export function Sidebar({
   const [peekDisplay, setPeekDisplay] = useState({ done: 0, total: 0 })
   // Ref counters are race-condition safe for concurrent async operations
   const peekCountRef = useRef({ pending: 0, total: 0, done: 0 })
+  const visibleTree = useMemo(
+    () => tree.filter((node) => shouldShowNode(node, filterConfig)),
+    [tree, filterConfig]
+  )
 
   function resetPeekCount(): void {
     peekCountRef.current = { pending: 0, total: 0, done: 0 }
@@ -198,6 +207,19 @@ export function Sidebar({
     localStorage.setItem(FILTER_KEY(rootPath), JSON.stringify(config))
   }
 
+  const undoLatestDelete = useCallback(async () => {
+    const latest = deletedStack[0]
+    if (!latest) return
+
+    const ok = await undoDelete(latest)
+    if (ok) {
+      setDeletedStack((prev) => prev.filter((entry) => entry.undoId !== latest.undoId))
+      addToast(`"${latest.name}" restaurado`, 'success')
+    } else {
+      addToast(`Não foi possível restaurar "${latest.name}"`, 'error')
+    }
+  }, [deletedStack, undoDelete, addToast])
+
   async function handleToggleExpand(node: TreeNode): Promise<void> {
     await toggleExpand(node)
     if (!node.isExpanded) {
@@ -264,14 +286,52 @@ export function Sidebar({
 
   async function confirmDelete(): Promise<void> {
     if (!deletingNode) return
-    const ok = await deleteNode(deletingNode)
-    if (ok) {
-      addToast(`"${deletingNode.name}" excluído`, 'success')
+    const result = await deleteNode(deletingNode)
+    if (result.ok && result.undo) {
+      const deletedEntry = result.undo
+      setDeletedStack((prev) => [deletedEntry, ...prev.filter((entry) => entry.undoId !== deletedEntry.undoId)].slice(0, 20))
+      addToast(`"${deletingNode.name}" excluído`, 'success', {
+        action: {
+          label: 'Reverter',
+          onClick: async () => {
+            const ok = await undoDelete(deletedEntry)
+            if (ok) {
+              setDeletedStack((prev) => prev.filter((entry) => entry.undoId !== deletedEntry.undoId))
+              addToast(`"${deletedEntry.name}" restaurado`, 'success')
+            } else {
+              addToast(`Não foi possível restaurar "${deletedEntry.name}"`, 'error')
+            }
+          },
+        },
+        durationMs: 8000,
+      })
     } else {
       addToast(`Erro ao excluir "${deletingNode.name}"`, 'error')
     }
     setDeletingNode(null)
   }
+
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false
+      return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.closest('[contenteditable="true"]') !== null
+    }
+
+    function handleUndoShortcut(event: KeyboardEvent): void {
+      const mod = window.api.platform === 'darwin' ? event.metaKey : event.ctrlKey
+      if (!mod || event.shiftKey || event.altKey || event.key.toLowerCase() !== 'z') return
+      if (deletedStack.length === 0 || isEditableTarget(event.target)) return
+      event.preventDefault()
+      void undoLatestDelete()
+    }
+
+    window.addEventListener('keydown', handleUndoShortcut)
+    return () => window.removeEventListener('keydown', handleUndoShortcut)
+  }, [deletedStack.length, undoLatestDelete])
+
+  useEffect(() => {
+    setDeletedStack([])
+  }, [rootPath])
 
   return (
     <>
@@ -288,6 +348,7 @@ export function Sidebar({
               onClick={() => { setShowNewFile(true); setShowNewFolder(false) }}
               className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
               title="Novo arquivo"
+              aria-label="Novo arquivo"
             >
               <FilePlus size={15} />
             </button>
@@ -295,6 +356,7 @@ export function Sidebar({
               onClick={() => { setShowNewFolder(true); setShowNewFile(false) }}
               className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
               title="Nova pasta"
+              aria-label="Nova pasta"
             >
               <FolderPlus size={15} />
             </button>
@@ -302,6 +364,7 @@ export function Sidebar({
               onClick={() => setShowFilterModal(true)}
               className={`rounded p-1.5 transition-colors hover:bg-zinc-700 ${isFilterModified ? 'text-indigo-400 hover:text-indigo-300' : 'text-zinc-500 hover:text-zinc-200'}`}
               title="Filtros"
+              aria-label="Abrir filtros da árvore"
             >
               <Filter size={15} />
             </button>
@@ -309,6 +372,7 @@ export function Sidebar({
               onClick={collapseAll}
               className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
               title="Colapsar tudo"
+              aria-label="Colapsar toda a árvore"
             >
               <ChevronsDownUp size={15} />
             </button>
@@ -316,6 +380,7 @@ export function Sidebar({
               onClick={handleRefresh}
               className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
               title="Atualizar"
+              aria-label="Atualizar árvore de arquivos"
             >
               <RefreshCw size={15} />
             </button>
@@ -355,11 +420,32 @@ export function Sidebar({
           )}
 
           {tree.length === 0 ? (
-            <p className="px-4 py-3 text-xs text-zinc-600">Pasta vazia</p>
+            <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-zinc-500">
+              <FolderSearch size={24} className="text-zinc-700" />
+              <div>
+                <p className="text-sm font-medium text-zinc-400">Nada por aqui ainda</p>
+                <p className="mt-1 text-xs text-zinc-600">Crie um arquivo markdown ou adicione conteúdo nesta pasta.</p>
+              </div>
+            </div>
+          ) : visibleTree.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 px-4 py-8 text-center text-zinc-500">
+              <Filter size={22} className="text-zinc-700" />
+              <div>
+                <p className="text-sm font-medium text-zinc-400">Nenhum arquivo visível</p>
+                <p className="mt-1 text-xs text-zinc-600">Os filtros atuais esconderam todos os itens desta pasta.</p>
+              </div>
+              {isFilterModified && (
+                <button
+                  onClick={() => handleSaveFilter(DEFAULT_FILTER)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                >
+                  <RotateCcw size={12} />
+                  Limpar filtros
+                </button>
+              )}
+            </div>
           ) : (
-            tree
-              .filter((node) => shouldShowNode(node, filterConfig))
-              .map((node) => (
+            visibleTree.map((node) => (
               <FileTreeNode
                 key={node.path}
                 node={node}
@@ -377,8 +463,8 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Dirty files panel — VPS only */}
-        {isRemote && dirtyTabs.length > 0 && (
+        {/* Dirty files panel */}
+        {showDirtyPanel && dirtyTabs.length > 0 && (
           <div className="shrink-0 border-t border-zinc-800">
             {/* Panel header */}
             <button
@@ -423,6 +509,7 @@ export function Sidebar({
                       onClick={() => onOpenFile?.(tab.path)}
                       className="shrink-0 rounded p-0.5 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-300"
                       title="Abrir arquivo"
+                      aria-label={`Abrir ${tab.name}`}
                     >
                       <FileIcon size={10} />
                     </button>
@@ -455,6 +542,7 @@ export function Sidebar({
               onClick={isRemote ? (onDisconnect ?? onExit) : onExit}
               className="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-red-400"
               title={isRemote ? 'Desconectar' : 'Fechar pasta'}
+              aria-label={isRemote ? 'Desconectar do VPS' : 'Fechar pasta atual'}
             >
               <LogOut size={12} />
             </button>
@@ -473,10 +561,17 @@ export function Sidebar({
       {/* Modal de confirmação de exclusão */}
       {deletingNode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-80 rounded-lg border border-zinc-700 bg-zinc-800 p-5 shadow-2xl">
+          <div
+            ref={deleteModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-node-title"
+            tabIndex={-1}
+            className="w-80 rounded-lg border border-zinc-700 bg-zinc-800 p-5 shadow-2xl"
+          >
             <div className="mb-1 flex items-center gap-2 text-red-400">
               <Trash2 size={16} />
-              <span className="font-medium">Excluir {deletingNode.type === 'directory' ? 'pasta' : 'arquivo'}</span>
+              <span id="delete-node-title" className="font-medium">Excluir {deletingNode.type === 'directory' ? 'pasta' : 'arquivo'}</span>
             </div>
             <p className="mb-4 text-sm text-zinc-400">
               Tem certeza que deseja excluir{' '}
@@ -486,6 +581,9 @@ export function Sidebar({
                   Todo o conteúdo da pasta será removido.
                 </span>
               )}
+              <span className="mt-2 block text-xs text-zinc-500">
+                Você poderá desfazer pelo toast ou com Ctrl+Z.
+              </span>
             </p>
             <div className="flex justify-end gap-2">
               <button

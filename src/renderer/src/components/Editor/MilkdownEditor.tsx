@@ -24,28 +24,31 @@ export function MilkdownEditor({ content, onChange, onSave, onReady, fontFamily,
       defaultValue: content
     })
 
-    // Capture any normalization Milkdown applies during init.
-    // We never call onChange() before create() resolves — doing so would race
-    // with isNormalized and mark the file dirty without any user edit.
+    // Suppress onChange during init — Milkdown normalises markdown (e.g. `- ` → `* `,
+    // adds blank lines between list items) across multiple async steps. We must wait
+    // until normalisation is fully settled before forwarding changes to the parent.
     let initDone = false
-    let capturedNormalized: string | null = null
 
     crepe.editor.config((ctx) => {
       ctx.get(listenerCtx).markdownUpdated((_, markdown, prevMarkdown) => {
-        if (!initDone) {
-          // Silently capture normalization; do NOT propagate to parent yet.
-          if (markdown !== prevMarkdown) capturedNormalized = markdown
-          return
-        }
+        if (!initDone) return // swallow all init-time normalisation events
         if (markdown !== prevMarkdown) onChange(markdown)
       })
     })
 
     crepe.create().then(() => {
-      initDone = true
-      // Deliver the final normalised content (or original if no change) so the
-      // parent can atomically set originalContent + isNormalized: true.
-      onReady?.(capturedNormalized ?? content)
+      // Read the fully-normalised markdown directly from the editor.
+      // This is more reliable than capturing intermediate markdownUpdated events,
+      // because Milkdown may normalise in multiple steps (some after create() resolves).
+      const normalised = crepe.getMarkdown()
+      // Delay initDone by one frame — Milkdown/ProseMirror may fire a final
+      // markdownUpdated synchronously right after create() resolves (e.g. plugin
+      // decorations, lazy list re-formatting). Waiting one rAF ensures those
+      // late normalisations are swallowed and not treated as user edits.
+      requestAnimationFrame(() => {
+        initDone = true
+        onReady?.(normalised)
+      })
     })
 
     return () => {

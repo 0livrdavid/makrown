@@ -8,13 +8,15 @@ import { SSHConnectionModal } from './components/SSHConnectionModal'
 import { ShortcutsModal } from './components/ShortcutsModal'
 import { SettingsModal, type VpsPrefs } from './components/SettingsModal'
 import { EnviarModal } from './components/EnviarModal'
+import { TerminalPanel } from './components/TerminalPanel'
 import { ToastContainer } from './components/Toast'
 import { ToastContext } from './contexts/ToastContext'
 import { useToast } from './hooks/useToast'
 import type { TreeNode } from './hooks/useFileTree'
-import type { SSHConfig } from '../../../shared/types'
+import type { SSHConfig, SSHProfileSummary } from '../../shared/types'
 
 const DRAFT_PREFIX = 'makrown:draft:'
+const LARGE_FILE_BYTES = 1 * 1024 * 1024
 
 function saveDraft(path: string, content: string): void {
   localStorage.setItem(DRAFT_PREFIX + path, content)
@@ -28,14 +30,26 @@ function clearDraft(path: string): void {
   localStorage.removeItem(DRAFT_PREFIX + path)
 }
 
+/** Compare two markdown strings ignoring trailing newlines (Milkdown may add them). */
+function contentEquals(a: string, b: string): boolean {
+  return a.replace(/\n+$/, '') === b.replace(/\n+$/, '')
+}
+
 // Persists closed-but-not-uploaded tabs across app restarts (VPS mode only)
 const PENDING_UPLOADS_KEY = 'makrown:pending-uploads'
 
-type PersistedUpload = { path: string; name: string; content: string; originalContent: string }
+type PersistedUpload = {
+  path: string
+  name: string
+  content: string
+  originalContent: string
+  isLargeFile?: boolean
+  fileSizeBytes?: number
+}
 
 function savePendingUploads(uploads: import('./components/Editor').OpenTab[]): void {
-  const data: PersistedUpload[] = uploads.map(({ path, name, content, originalContent }) => ({
-    path, name, content, originalContent,
+  const data: PersistedUpload[] = uploads.map(({ path, name, content, originalContent, isLargeFile, fileSizeBytes }) => ({
+    path, name, content, originalContent, isLargeFile, fileSizeBytes,
   }))
   localStorage.setItem(PENDING_UPLOADS_KEY, JSON.stringify(data))
 }
@@ -45,13 +59,17 @@ function loadPendingUploads(): import('./components/Editor').OpenTab[] {
     const raw = localStorage.getItem(PENDING_UPLOADS_KEY)
     if (!raw) return []
     const items: PersistedUpload[] = JSON.parse(raw)
-    return items.map(({ path, name, content, originalContent }) => ({
-      path, name, content, originalContent,
-      type: 'file' as const,
-      isDirty: true,
-      isNormalized: true,
-      isUploading: false,
-    }))
+    return items
+      .map(({ path, name, content, originalContent, isLargeFile, fileSizeBytes }) => ({
+        path, name, content, originalContent,
+        type: 'file' as const,
+        isDirty: !contentEquals(content, originalContent),
+        isNormalized: true,
+        isUploading: false,
+        isLargeFile,
+        fileSizeBytes,
+      }))
+      .filter((t) => t.isDirty)
   } catch {
     return []
   }
@@ -66,7 +84,7 @@ const MAX_RECENT = 8
 const RECENT_VPS_KEY = 'makrown:recentVPS'
 const MAX_RECENT_VPS = 5
 const EDITOR_PREFS_KEY = 'makrown:editor-prefs'
-const DEFAULT_EDITOR_PREFS: EditorPrefs = { fontFamily: 'sans', fontSize: 15 }
+const DEFAULT_EDITOR_PREFS: EditorPrefs = { fontFamily: 'sans', fontSize: 15, rawModeEnabled: false, tabSize: 2 }
 
 const UI_ZOOM_KEY = 'makrown:ui-zoom'
 const UI_ZOOM_MIN = 0.7
@@ -80,6 +98,17 @@ function loadUiZoom(): number {
     return isNaN(val) ? 1.0 : Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, val))
   } catch {
     return 1.0
+  }
+}
+
+const LOCAL_DIFF_KEY = 'makrown:local-diff-enabled'
+
+function loadLocalDiffEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(LOCAL_DIFF_KEY)
+    return raw === null ? true : raw === 'true'
+  } catch {
+    return true
   }
 }
 
@@ -123,23 +152,77 @@ function addToRecent(folders: string[], path: string): string[] {
   return next
 }
 
-function loadRecentVPS(): SSHConfig[] {
+function loadRecentVPSIds(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(RECENT_VPS_KEY) ?? '[]')
+    const parsed = JSON.parse(localStorage.getItem(RECENT_VPS_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : []
   } catch {
     return []
   }
 }
 
-function addToRecentVPS(configs: SSHConfig[], config: SSHConfig): SSHConfig[] {
-  const key = (c: SSHConfig): string => `${c.host}:${c.port}:${c.username}`
-  const next = [config, ...configs.filter((c) => key(c) !== key(config))].slice(0, MAX_RECENT_VPS)
-  localStorage.setItem(RECENT_VPS_KEY, JSON.stringify(next))
-  return next
+function saveRecentVPSIds(ids: string[]): void {
+  const uniqueIds = ids.filter((id, index) => id && ids.indexOf(id) === index).slice(0, MAX_RECENT_VPS)
+  localStorage.setItem(RECENT_VPS_KEY, JSON.stringify(uniqueIds))
 }
 
-function vpsBaseName(config: SSHConfig): string {
-  return config.label || config.host
+function isSSHConfigLike(value: unknown): value is SSHConfig {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Partial<SSHConfig>
+  return typeof candidate.host === 'string'
+    && typeof candidate.port === 'number'
+    && typeof candidate.username === 'string'
+    && (candidate.authMethod === 'password' || candidate.authMethod === 'key')
+    && typeof candidate.remotePath === 'string'
+}
+
+// Persists open tabs per project so they survive app restarts and folder switches
+const OPEN_TABS_PREFIX = 'makrown:open-tabs:'
+
+type PersistedTab = { path: string; type: 'file' | 'diff'; diffOf?: string }
+type PersistedTabState = { tabs: PersistedTab[]; activeTabPath: string | null }
+
+function saveOpenTabs(folder: string, tabs: OpenTab[], activeTabPath: string | null): void {
+  const data: PersistedTabState = {
+    tabs: tabs.map(({ path, type, diffOf }) => ({ path, type, ...(diffOf ? { diffOf } : {}) })),
+    activeTabPath,
+  }
+  localStorage.setItem(OPEN_TABS_PREFIX + folder, JSON.stringify(data))
+}
+
+function loadSavedTabs(folder: string): PersistedTabState | null {
+  try {
+    const raw = localStorage.getItem(OPEN_TABS_PREFIX + folder)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+// Persists the last active session so the app can auto-restore on startup
+const LAST_SESSION_KEY = 'makrown:last-session'
+
+type LastSession =
+  | { type: 'local'; folder: string }
+  | { type: 'vps'; profileId: string }
+
+function saveLastSession(session: LastSession | null): void {
+  if (session) localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(session))
+  else localStorage.removeItem(LAST_SESSION_KEY)
+}
+
+function loadLastSession(): LastSession | null {
+  try {
+    const raw = localStorage.getItem(LAST_SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function vpsBaseName(profile: SSHProfileSummary | SSHConfig): string {
+  return profile.label || profile.host
 }
 
 function folderBaseName(path: string): string {
@@ -157,8 +240,8 @@ function App(): React.JSX.Element {
   const [showContentSearch, setShowContentSearch] = useState(false)
   const [showSSHModal, setShowSSHModal] = useState(false)
   const [isRemote, setIsRemote] = useState(false)
-  const [recentVPS, setRecentVPS] = useState<SSHConfig[]>(loadRecentVPS)
-  const [activeSSHConfig, setActiveSSHConfig] = useState<SSHConfig | null>(null)
+  const [recentVPS, setRecentVPS] = useState<SSHProfileSummary[]>([])
+  const [activeSSHConfig, setActiveSSHConfig] = useState<SSHProfileSummary | null>(null)
   const [pendingSSHConfig, setPendingSSHConfig] = useState<SSHConfig | null>(null)
   const [connectionKey, setConnectionKey] = useState(0)
   const [editorPrefs, setEditorPrefs] = useState<EditorPrefs>(loadEditorPrefs)
@@ -166,6 +249,7 @@ function App(): React.JSX.Element {
   const [showShortcutsModal, setShowShortcutsModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [vpsPrefs, setVpsPrefs] = useState<VpsPrefs>(loadVpsPrefs)
+  const [localDiffEnabled, setLocalDiffEnabled] = useState(loadLocalDiffEnabled)
   const [pendingUploads, setPendingUploads] = useState<OpenTab[]>(loadPendingUploads)
 
   // Refs to avoid stale closures in auto-save timers
@@ -174,6 +258,16 @@ function App(): React.JSX.Element {
   const vpsPrefsRef = useRef<VpsPrefs>(vpsPrefs)
   const autoSaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [showEnviarModal, setShowEnviarModal] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalHeight, setTerminalHeight] = useState(() => {
+    const saved = localStorage.getItem('makrown:terminal-height')
+    return saved ? Number(saved) : 280
+  })
+
+  function handleTerminalHeightChange(h: number): void {
+    setTerminalHeight(h)
+    localStorage.setItem('makrown:terminal-height', String(h))
+  }
   const [sshStatus, setSshStatus] = useState<'connected' | 'reconnecting' | 'disconnected'>('disconnected')
   const sshStatusRef = useRef<'connected' | 'reconnecting' | 'disconnected'>('disconnected')
 
@@ -191,6 +285,55 @@ function App(): React.JSX.Element {
       savePendingUploads(pendingUploads)
     }
   }, [pendingUploads, isRemote])
+
+  // Persist open tabs per project whenever tabs or activeTabPath change
+  useEffect(() => {
+    if (folder) saveOpenTabs(folder, tabs, activeTabPath)
+  }, [folder, tabs, activeTabPath])
+
+  // Re-read open files when they change on disk (external editor, git pull, etc.)
+  useEffect(() => {
+    if (isRemote) return // only for local mode — VPS files are fetched on demand
+    const unsubscribe = window.api.fs.onFileChanged(async (changedPath: string) => {
+      const openTab = tabsRef.current.find((t) => t.type === 'file' && t.path === changedPath)
+      if (!openTab) return
+      const [statResult, result] = await Promise.all([
+        window.api.fs.stat(changedPath),
+        window.api.fs.readFile(changedPath),
+      ])
+      if (!result.ok) return
+      const diskContent = result.data ?? ''
+      const fileSizeBytes = statResult.ok && statResult.data ? statResult.data.size : new TextEncoder().encode(diskContent).length
+      const isLargeFile = fileSizeBytes > LARGE_FILE_BYTES
+      // If disk content matches what we already have as original, nothing changed for us
+      if (contentEquals(diskContent, openTab.originalContent)) return
+      if (isLargeFile && !openTab.isLargeFile) {
+        addToast(`"${openTab.name}" foi recarregado em modo seguro após edição externa.`, 'info', { durationMs: 5000 })
+      }
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.path !== changedPath || t.type !== 'file') return t
+          // If the user has no local edits, update silently
+          if (!t.isDirty) {
+            clearDraft(changedPath)
+            return {
+              ...t,
+              content: diskContent,
+              originalContent: diskContent,
+              isDirty: false,
+              isNormalized: false,
+              contentVersion: (t.contentVersion ?? 0) + 1,
+              isLargeFile,
+              fileSizeBytes,
+            }
+          }
+          // If user has edits, update originalContent (for diff) but keep their content
+          return { ...t, originalContent: diskContent, isLargeFile, fileSizeBytes }
+        })
+      )
+    })
+    return unsubscribe
+  }, [isRemote, addToast])
 
   // Apply persisted zoom on mount and whenever it changes
   useEffect(() => {
@@ -229,14 +372,179 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    window.api.prefs.get<string | null>('lastOpenedFolder').then(() => {
-      setLoading(false)
-    })
-  }, [])
+    let cancelled = false
 
-  function openFolder(path: string): void {
+    async function migrateLegacyRecentVPS(): Promise<void> {
+      const raw = localStorage.getItem(RECENT_VPS_KEY)
+      if (!raw) return
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        localStorage.removeItem(RECENT_VPS_KEY)
+        return
+      }
+
+      if (!Array.isArray(parsed)) {
+        localStorage.removeItem(RECENT_VPS_KEY)
+        return
+      }
+
+      if (parsed.every((item) => typeof item === 'string')) {
+        const migratedIds: string[] = []
+        for (const id of parsed) {
+          const profile = await window.api.credentials.get(id)
+          if (!profile?.id) continue
+          migratedIds.push(profile.id)
+        }
+
+        if (migratedIds.length > 0) saveRecentVPSIds(migratedIds)
+        else localStorage.removeItem(RECENT_VPS_KEY)
+        return
+      }
+
+      const legacyProfiles = parsed.filter(isSSHConfigLike)
+      if (legacyProfiles.length === 0) {
+        localStorage.removeItem(RECENT_VPS_KEY)
+        return
+      }
+
+      const migratedIds: string[] = []
+      for (const legacyProfile of legacyProfiles) {
+        const { id } = await window.api.credentials.set(legacyProfile)
+        migratedIds.push(id)
+      }
+
+      if (migratedIds.length > 0) saveRecentVPSIds(migratedIds)
+      else localStorage.removeItem(RECENT_VPS_KEY)
+    }
+
+    async function syncRecentVPS(): Promise<void> {
+      const ids = loadRecentVPSIds()
+      if (ids.length === 0) {
+        if (!cancelled) setRecentVPS([])
+        return
+      }
+
+      const allProfiles = await window.api.credentials.list()
+      const profileMap = new Map(allProfiles.map((profile) => [profile.id, profile]))
+      const ordered = ids.map((id) => profileMap.get(id)).filter(Boolean) as SSHProfileSummary[]
+
+      if (ordered.length !== ids.length) {
+        if (ordered.length > 0) saveRecentVPSIds(ordered.map((profile) => profile.id))
+        else localStorage.removeItem(RECENT_VPS_KEY)
+      }
+
+      if (!cancelled) setRecentVPS(ordered)
+    }
+
+    async function migrateLegacyLastSession(): Promise<LastSession | null> {
+      const session = loadLastSession()
+      if (!session || session.type !== 'vps') return session
+
+      const profile = await window.api.credentials.get(session.profileId)
+      if (!profile?.id) {
+        saveLastSession(null)
+        return null
+      }
+
+      if (profile.id !== session.profileId) {
+        const migratedSession: LastSession = { type: 'vps', profileId: profile.id }
+        saveLastSession(migratedSession)
+        return migratedSession
+      }
+
+      return session
+    }
+
+    async function restoreLastSession(): Promise<void> {
+      const session = await migrateLegacyLastSession()
+      if (!session) return
+
+      if (session.type === 'local') {
+        setFolder(session.folder)
+        setRecentFolders((prev) => addToRecent(prev, session.folder))
+        await restoreTabs(session.folder)
+        return
+      }
+
+      const config = await window.api.credentials.get(session.profileId)
+      if (!config) {
+        saveLastSession(null)
+        return
+      }
+
+      const result = await window.api.ssh.connect(config)
+      if (result.ok) {
+        await handleSSHConnect(config, config.remotePath)
+      } else {
+        saveLastSession(null)
+      }
+    }
+
+    async function initialiseSecureProfiles(): Promise<void> {
+      try {
+        await migrateLegacyRecentVPS()
+        await syncRecentVPS()
+        await restoreLastSession()
+      } catch {
+        if (!cancelled) setRecentVPS([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void initialiseSecureProfiles()
+
+    return () => {
+      cancelled = true
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function restoreTabs(folderPath: string): Promise<void> {
+    const saved = loadSavedTabs(folderPath)
+    if (!saved || saved.tabs.length === 0) return
+
+    const fileTabs = saved.tabs.filter((t) => t.type === 'file')
+    const diffTabs = saved.tabs.filter((t) => t.type === 'diff')
+
+    const opened: OpenTab[] = []
+    for (const entry of fileTabs) {
+      const restoredTab = await buildFileTab(entry.path, entry.path.split('/').pop() ?? entry.path)
+      if (!restoredTab) continue // file no longer exists — skip silently
+      opened.push(restoredTab)
+    }
+
+    // Restore diff tabs whose source file was successfully opened
+    const openedPaths = new Set(opened.map((t) => t.path))
+    for (const entry of diffTabs) {
+      if (!entry.diffOf || !openedPaths.has(entry.diffOf)) continue
+      opened.push({
+        path: entry.path,
+        name: entry.path.replace(/^diff:/, '').split('/').pop() ?? entry.path,
+        type: 'diff',
+        content: '',
+        originalContent: '',
+        isDirty: false,
+        isNormalized: true,
+        isUploading: false,
+        diffOf: entry.diffOf,
+      })
+    }
+
+    if (opened.length === 0) return
+    const activeTab = saved.activeTabPath && opened.some((t) => t.path === saved.activeTabPath)
+      ? saved.activeTabPath
+      : opened[0].path
+    setTabs(opened)
+    setActiveTabPath(activeTab)
+  }
+
+  async function openFolder(path: string): Promise<void> {
+    await window.api.fs.clearDeleteUndo()
     if (isRemote) {
-      window.api.ssh.disconnect()
+      await window.api.ssh.disconnect()
       setIsRemote(false)
       setActiveSSHConfig(null)
     }
@@ -247,23 +555,41 @@ function App(): React.JSX.Element {
     setActiveTabPath(null)
     setRecentFolders((prev) => addToRecent(prev, path))
     window.api.prefs.set('lastOpenedFolder', path)
+    saveLastSession({ type: 'local', folder: path })
+    void restoreTabs(path)
   }
 
   async function handleSelectFolder(): Promise<void> {
     const result = await window.api.fs.selectFolder()
     if (result.ok && result.data) {
-      openFolder(result.data)
+      await openFolder(result.data)
     }
   }
 
   // Connection is already established by SSHConnectionModal before this is called
-  function handleSSHConnect(config: SSHConfig, remotePath: string): void {
+  async function handleSSHConnect(config: SSHConfig, remotePath: string): Promise<void> {
+    await window.api.fs.clearDeleteUndo()
     const fullConfig = { ...config, remotePath }
+    const { id } = await window.api.credentials.set(fullConfig)
+    const summary: SSHProfileSummary = {
+      id,
+      label: fullConfig.label,
+      host: fullConfig.host,
+      port: fullConfig.port,
+      username: fullConfig.username,
+      authMethod: fullConfig.authMethod,
+      keyPath: fullConfig.keyPath,
+      remotePath: fullConfig.remotePath,
+    }
     setIsRemote(true)
     setShowSSHModal(false)
     setPendingSSHConfig(null)
-    setActiveSSHConfig(fullConfig)
-    setRecentVPS((prev) => addToRecentVPS(prev, fullConfig))
+    setActiveSSHConfig(summary)
+    setRecentVPS((prev) => {
+      const next = [summary, ...prev.filter((p) => p.id !== id)].slice(0, MAX_RECENT_VPS)
+      saveRecentVPSIds(next.map((p) => p.id))
+      return next
+    })
     setFolder(remotePath)
     setConnectionKey((k) => k + 1)  // força o Sidebar a recarregar mesmo se o path for igual
     setTabs([])
@@ -271,11 +597,14 @@ function App(): React.JSX.Element {
     // across reconnects to the same VPS. clearPendingUploads() is called on explicit disconnect.
     setActiveTabPath(null)
     addToast(`Conectado a ${vpsBaseName(config)}`, 'success')
+    saveLastSession({ type: 'vps', profileId: id })
+    restoreTabs(remotePath)
   }
 
-  function handleDisconnect(): void {
+  async function handleDisconnect(): Promise<void> {
     cancelAllAutoSave()
-    window.api.ssh.disconnect()
+    await window.api.fs.clearDeleteUndo()
+    await window.api.ssh.disconnect()
     clearPendingUploads()
     setIsRemote(false)
     setActiveSSHConfig(null)
@@ -283,28 +612,41 @@ function App(): React.JSX.Element {
     setTabs([])
     setPendingUploads([])
     setActiveTabPath(null)
+    saveLastSession(null)
     addToast('Desconectado', 'info')
   }
 
-  function handleExitFolder(): void {
+  async function handleExitFolder(): Promise<void> {
+    await window.api.fs.clearDeleteUndo()
+    saveLastSession(null)
     setFolder(null)
     setTabs([])
     setActiveTabPath(null)
   }
 
   // Conecta direto sem abrir modal (usado ao clicar em VPS recente)
-  async function handleDirectConnectVPS(config: SSHConfig): Promise<void> {
+  async function handleDirectConnectVPS(summary: SSHProfileSummary): Promise<void> {
+    const config = await window.api.credentials.get(summary.id)
+    if (!config) {
+      addToast('Perfil não encontrado', 'error')
+      return
+    }
     const result = await window.api.ssh.connect(config)
     if (!result.ok) {
       addToast(result.error ?? 'Erro ao conectar', 'error')
       return
     }
     // handleSSHConnect já incrementa connectionKey, forçando reload do Sidebar
-    handleSSHConnect(config, config.remotePath)
+    await handleSSHConnect(config, config.remotePath)
   }
 
   // Abre modal pré-preenchido para editar antes de conectar
-  function handleEditVPS(config: SSHConfig): void {
+  async function handleEditVPS(summary: SSHProfileSummary): Promise<void> {
+    const config = await window.api.credentials.get(summary.id)
+    if (!config) {
+      addToast('Perfil não encontrado', 'error')
+      return
+    }
     setPendingSSHConfig(config)
     setShowSSHModal(true)
   }
@@ -317,13 +659,13 @@ function App(): React.JSX.Element {
     })
   }
 
-  function removeRecentVPS(config: SSHConfig): void {
+  function removeRecentVPS(summary: SSHProfileSummary): void {
     setRecentVPS((prev) => {
-      const key = (c: SSHConfig): string => `${c.host}:${c.port}:${c.username}`
-      const next = prev.filter((c) => key(c) !== key(config))
-      localStorage.setItem(RECENT_VPS_KEY, JSON.stringify(next))
+      const next = prev.filter((p) => p.id !== summary.id)
+      saveRecentVPSIds(next.map((p) => p.id))
       return next
     })
+    void window.api.credentials.delete(summary.id)
   }
 
   function handleSSHModalClose(): void {
@@ -334,7 +676,49 @@ function App(): React.JSX.Element {
   function handleEditorPrefsChange(prefs: EditorPrefs): void {
     setEditorPrefs(prefs)
     localStorage.setItem(EDITOR_PREFS_KEY, JSON.stringify(prefs))
+    if (!prefs.rawModeEnabled) setLayoutMode((m) => m === 'raw' ? 'editor' : m)
   }
+
+  function handleLocalDiffChange(enabled: boolean): void {
+    setLocalDiffEnabled(enabled)
+    localStorage.setItem(LOCAL_DIFF_KEY, String(enabled))
+  }
+
+  const buildFileTab = useCallback(async (
+    filePath: string,
+    fileName: string,
+    notifyLargeFile = false
+  ): Promise<OpenTab | null> => {
+    const [statResult, readResult] = await Promise.all([
+      window.api.fs.stat(filePath),
+      window.api.fs.readFile(filePath),
+    ])
+
+    if (!readResult.ok) return null
+
+    const diskContent = readResult.data ?? ''
+    const draft = loadDraft(filePath)
+    const hasDraft = draft !== null && !contentEquals(draft, diskContent)
+    const fileSizeBytes = statResult.ok && statResult.data ? statResult.data.size : new TextEncoder().encode(diskContent).length
+    const isLargeFile = fileSizeBytes > LARGE_FILE_BYTES
+
+    if (isLargeFile && notifyLargeFile) {
+      addToast(`"${fileName}" é maior que 1 MB e foi aberto em modo seguro.`, 'info', { durationMs: 5000 })
+    }
+
+    return {
+      path: filePath,
+      name: fileName,
+      type: 'file',
+      content: hasDraft ? draft : diskContent,
+      originalContent: diskContent,
+      isDirty: hasDraft,
+      isNormalized: false,
+      isUploading: false,
+      isLargeFile,
+      fileSizeBytes,
+    }
+  }, [addToast])
 
   const handleSelectFile = useCallback(async (node: TreeNode) => {
     if (node.type !== 'file') return
@@ -354,30 +738,16 @@ function App(): React.JSX.Element {
       return
     }
 
-    const result = await window.api.fs.readFile(node.path)
-    if (!result.ok) {
+    const newTab = await buildFileTab(node.path, node.name, true)
+    if (!newTab) {
       addToast(`Erro ao abrir ${node.name}`, 'error')
       return
     }
 
-    const diskContent = result.data ?? ''
-    const draft = loadDraft(node.path)
-    const hasDraft = draft !== null && draft !== diskContent
-
-    const newTab: OpenTab = {
-      path: node.path,
-      name: node.name,
-      type: 'file',
-      content: hasDraft ? draft : diskContent,
-      originalContent: diskContent,
-      isDirty: hasDraft,
-      isNormalized: false,
-      isUploading: false
-    }
-
-    setTabs((prev) => [...prev, newTab])
+    // Use functional updater to prevent duplicate tabs from rapid clicks
+    setTabs((prev) => prev.some((t) => t.path === node.path) ? prev : [...prev, newTab])
     setActiveTabPath(node.path)
-  }, [tabs, pendingUploads, addToast])
+  }, [tabs, pendingUploads, addToast, buildFileTab])
 
   const handleTabClose = useCallback((path: string) => {
     setTabs((prev) => {
@@ -412,7 +782,13 @@ function App(): React.JSX.Element {
         // overwriting originalContent with the edited content on re-mount.
         if (t.isNormalized) return t
         // If the tab was opened with a draft, preserve it — only update originalContent baseline.
-        if (t.isDirty) return { ...t, isNormalized: true, originalContent: normalizedContent }
+        // Recalculate isDirty: draft may match the normalized content (e.g. Milkdown
+        // previously normalised * → - and the draft already has -).
+        if (t.isDirty) {
+          const stillDirty = !contentEquals(t.content, normalizedContent)
+          if (!stillDirty) clearDraft(path)
+          return { ...t, isNormalized: true, originalContent: normalizedContent, isDirty: stillDirty }
+        }
         return { ...t, isNormalized: true, originalContent: normalizedContent, content: normalizedContent, isDirty: false }
       })
     )
@@ -452,7 +828,7 @@ function App(): React.JSX.Element {
         // init process. Don't mark dirty yet — originalContent may still be the raw
         // disk content and the "change" is just Milkdown normalizing (e.g. line endings).
         if (!t.isNormalized) return { ...t, content }
-        const isDirty = content !== t.originalContent
+        const isDirty = !contentEquals(content, t.originalContent)
         // Schedule or cancel auto-save based on dirty state
         if (isRemote && vpsPrefsRef.current.autoSaveEnabled) {
           if (isDirty && !t.isUploading) scheduleAutoSave(path)
@@ -525,15 +901,16 @@ function App(): React.JSX.Element {
     const update = (t: OpenTab): OpenTab => t.path !== filePath ? t : {
       ...t,
       content: newContent,
-      isDirty: newContent !== t.originalContent,
+      isDirty: !contentEquals(newContent, t.originalContent),
       contentVersion: (t.contentVersion ?? 0) + 1,
     }
     setTabs((prev) => prev.map(update))
-    setPendingUploads((prev) => prev.map(update))
+    // For pendingUploads: update and remove if no longer dirty (revert restores original)
+    setPendingUploads((prev) => prev.map(update).filter((t) => t.isDirty))
     // Keep draft in sync
     const tab = [...tabs, ...pendingUploads].find((t) => t.path === filePath)
     if (tab) {
-      if (newContent !== tab.originalContent) saveDraft(filePath, newContent)
+      if (!contentEquals(newContent, tab.originalContent)) saveDraft(filePath, newContent)
       else clearDraft(filePath)
     }
   }, [tabs, pendingUploads])
@@ -543,10 +920,11 @@ function App(): React.JSX.Element {
     const update = (t: OpenTab): OpenTab => t.path !== filePath ? t : {
       ...t,
       originalContent: newOriginal,
-      isDirty: t.content !== newOriginal,
+      isDirty: !contentEquals(t.content, newOriginal),
     }
     setTabs((prev) => prev.map(update))
-    setPendingUploads((prev) => prev.map(update))
+    // Remove pendingUploads that are no longer dirty (accept aligns baseline with content)
+    setPendingUploads((prev) => prev.map(update).filter((t) => t.isDirty))
   }, [])
 
   const handleOpenDiff = useCallback((filePath: string) => {
@@ -624,6 +1002,7 @@ function App(): React.JSX.Element {
       const mod = window.api.platform === 'darwin' ? e.metaKey : e.ctrlKey
       if (!mod) return
       if (e.key === '/' ) { e.preventDefault(); setShowShortcutsModal(true) }
+      if (e.key === '`') { e.preventDefault(); setTerminalOpen((v) => !v); return }
       if (!folder) return
       if (e.key === 'p' && !e.shiftKey) { e.preventDefault(); setShowFileSearch(true) }
       else if (e.key === 'F' && e.shiftKey) { e.preventDefault(); setShowContentSearch(true) }
@@ -648,9 +1027,10 @@ function App(): React.JSX.Element {
       else if (action === 'search:content') setShowContentSearch(true)
       else if (action === 'shortcuts') setShowShortcutsModal(true)
       else if (action === 'openSettings') setShowSettingsModal(true)
+      else if (action === 'closeTab') { if (activeTabPath) handleTabClose(activeTabPath) }
     })
     return unsubscribe
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTabPath, handleTabClose])
 
   if (loading) {
     return (
@@ -720,6 +1100,7 @@ function App(): React.JSX.Element {
                           onClick={() => removeRecentFolder(path)}
                           className="mr-1.5 rounded p-1 text-zinc-700 opacity-0 transition-all hover:bg-zinc-700 hover:text-red-400 group-hover/item:opacity-100"
                           title="Remover da lista"
+                          aria-label={`Remover ${folderBaseName(path)} das pastas recentes`}
                         >
                           <X size={10} />
                         </button>
@@ -735,29 +1116,30 @@ function App(): React.JSX.Element {
                     VPS recentes
                   </p>
                   <div className="flex flex-col gap-0.5">
-                    {recentVPS.map((cfg) => (
+                    {recentVPS.map((summary) => (
                       <div
-                        key={`${cfg.host}:${cfg.port}:${cfg.username}`}
+                        key={summary.id}
                         className="group/item flex w-full items-center rounded-md transition-colors hover:bg-zinc-800"
                       >
                         <button
-                          onClick={() => handleDirectConnectVPS(cfg)}
+                          onClick={() => handleDirectConnectVPS(summary)}
                           className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
                         >
                           <Server size={12} className="shrink-0 text-indigo-400" />
                           <div className="min-w-0">
                             <div className="truncate text-xs font-medium text-zinc-300">
-                              {vpsBaseName(cfg)}
+                              {vpsBaseName(summary)}
                             </div>
                             <div className="truncate text-[10px] text-zinc-600">
-                              {cfg.username}@{cfg.host}:{cfg.port}
+                              {summary.username}@{summary.host}:{summary.port}
                             </div>
                           </div>
                         </button>
                         <button
-                          onClick={() => removeRecentVPS(cfg)}
+                          onClick={() => removeRecentVPS(summary)}
                           className="mr-1.5 rounded p-1 text-zinc-700 opacity-0 transition-all hover:bg-zinc-700 hover:text-red-400 group-hover/item:opacity-100"
                           title="Remover da lista"
+                          aria-label={`Remover ${vpsBaseName(summary)} das conexões recentes`}
                         >
                           <X size={10} />
                         </button>
@@ -807,48 +1189,60 @@ function App(): React.JSX.Element {
 
   return (
     <ToastContext.Provider value={{ addToast }}>
-      <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100">
-        <Sidebar
-          key={connectionKey}
-          rootPath={folder}
-          selectedPath={activeTabPath}
-          onSelectFile={handleSelectFile}
-          onOpenFolder={openFolder}
-          onPickFolder={handleSelectFolder}
-          onConnectVPS={() => setShowSSHModal(true)}
-          onConnectRecentVPS={handleDirectConnectVPS}
-          onEditVPS={handleEditVPS}
-          onDisconnect={isRemote ? handleDisconnect : undefined}
-          onExit={handleExitFolder}
+      <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <Sidebar
+            key={connectionKey}
+            rootPath={folder}
+            selectedPath={activeTabPath}
+            onSelectFile={handleSelectFile}
+            onOpenFolder={openFolder}
+            onPickFolder={handleSelectFolder}
+            onConnectVPS={() => setShowSSHModal(true)}
+            onConnectRecentVPS={handleDirectConnectVPS}
+            onEditVPS={handleEditVPS}
+            onDisconnect={isRemote ? handleDisconnect : undefined}
+            onExit={handleExitFolder}
+            isRemote={isRemote}
+            recentFolders={recentFolders}
+            recentVPS={recentVPS}
+            activeSSHConfig={activeSSHConfig}
+            sshStatus={isRemote ? sshStatus : undefined}
+            showDirtyPanel={isRemote || localDiffEnabled}
+            dirtyTabs={[...tabs.filter((t) => t.type === 'file' && t.isDirty), ...pendingUploads.filter((t) => t.isDirty)]}
+            onOpenDiff={handleOpenDiff}
+            onOpenFile={handleOpenFile}
+          />
+          <Editor
+            tabs={tabs}
+            pendingUploads={pendingUploads}
+            activeTabPath={activeTabPath}
+            layoutMode={layoutMode}
+            onLayoutChange={setLayoutMode}
+            onTabChange={setActiveTabPath}
+            onTabClose={handleTabClose}
+            onSave={handleSave}
+            onContentChange={handleContentChange}
+            onDiffRevert={handleDiffRevert}
+            onDiffAccept={handleDiffAccept}
+            editorPrefs={editorPrefs}
+            onEditorPrefsChange={handleEditorPrefsChange}
+            onOpenSettings={() => setShowSettingsModal(true)}
+            onToggleTerminal={() => setTerminalOpen((v) => !v)}
+            terminalOpen={terminalOpen}
+            onEnviar={() => setShowEnviarModal(true)}
+            onEnviarFile={handleEnviarFile}
+            onNormalized={handleNormalized}
+            isRemote={isRemote}
+            autoSaveEnabled={isRemote && vpsPrefs.autoSaveEnabled}
+          />
+        </div>
+        <TerminalPanel
+          isOpen={terminalOpen}
+          height={terminalHeight}
+          onHeightChange={handleTerminalHeightChange}
+          cwd={folder}
           isRemote={isRemote}
-          recentFolders={recentFolders}
-          recentVPS={recentVPS}
-          activeSSHConfig={activeSSHConfig}
-          sshStatus={isRemote ? sshStatus : undefined}
-          dirtyTabs={[...tabs.filter((t) => t.type === 'file' && t.isDirty), ...pendingUploads]}
-          onOpenDiff={handleOpenDiff}
-          onOpenFile={handleOpenFile}
-        />
-        <Editor
-          tabs={tabs}
-          pendingUploads={pendingUploads}
-          activeTabPath={activeTabPath}
-          layoutMode={layoutMode}
-          onLayoutChange={setLayoutMode}
-          onTabChange={setActiveTabPath}
-          onTabClose={handleTabClose}
-          onSave={handleSave}
-          onContentChange={handleContentChange}
-          onDiffRevert={handleDiffRevert}
-          onDiffAccept={handleDiffAccept}
-          editorPrefs={editorPrefs}
-          onEditorPrefsChange={handleEditorPrefsChange}
-          onOpenSettings={() => setShowSettingsModal(true)}
-          onEnviar={() => setShowEnviarModal(true)}
-          onEnviarFile={handleEnviarFile}
-          onNormalized={handleNormalized}
-          isRemote={isRemote}
-          autoSaveEnabled={isRemote && vpsPrefs.autoSaveEnabled}
         />
       </div>
 
@@ -878,7 +1272,7 @@ function App(): React.JSX.Element {
       )}
       {showEnviarModal && (
         <EnviarModal
-          dirtyTabs={[...tabs.filter((t) => t.type === 'file' && t.isDirty), ...pendingUploads]}
+          dirtyTabs={[...tabs.filter((t) => t.type === 'file' && t.isDirty), ...pendingUploads.filter((t) => t.isDirty)]}
           onCancel={() => setShowEnviarModal(false)}
           onEnviar={handleEnviar}
         />
@@ -896,6 +1290,8 @@ function App(): React.JSX.Element {
               setVpsPrefs(prefs)
               localStorage.setItem(VPS_PREFS_KEY, JSON.stringify(prefs))
             }}
+            localDiffEnabled={localDiffEnabled}
+            onLocalDiffChange={handleLocalDiffChange}
           />
         </div>
       )}

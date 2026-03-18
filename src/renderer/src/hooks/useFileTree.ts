@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import type { FileEntry } from '../../../shared/types'
+import type { FileEntry, FileType } from '../../../shared/types'
 
 export interface TreeNode extends FileEntry {
   children?: TreeNode[]
@@ -18,7 +18,21 @@ interface UseFileTreeReturn {
   createFile: (dirPath: string, name: string) => Promise<boolean>
   createDir: (dirPath: string, name: string) => Promise<boolean>
   rename: (node: TreeNode, newName: string) => Promise<boolean>
-  deleteNode: (node: TreeNode) => Promise<boolean>
+  deleteNode: (node: TreeNode) => Promise<DeleteNodeResult>
+  undoDelete: (entry: DeletedNodeUndo) => Promise<boolean>
+}
+
+export interface DeletedNodeUndo {
+  undoId: string
+  path: string
+  parentPath: string
+  name: string
+  type: FileType
+}
+
+interface DeleteNodeResult {
+  ok: boolean
+  undo?: DeletedNodeUndo
 }
 
 function sortEntries(entries: FileEntry[]): FileEntry[] {
@@ -206,13 +220,33 @@ export function useFileTree(): UseFileTreeReturn {
     setTree((prev) => collapse(prev))
   }, [])
 
-  const deleteNode = useCallback(async (node: TreeNode): Promise<boolean> => {
+  const deleteNode = useCallback(async (node: TreeNode): Promise<DeleteNodeResult> => {
     const result = await window.api.fs.delete(node.path)
-    if (result.ok) {
-      setTree((prev) => removeNodeFromTree(prev, node.path))
+    if (!result.ok || !result.data) return { ok: false }
+
+    setTree((prev) => removeNodeFromTree(prev, node.path))
+
+    const sep = node.path.includes('\\') ? '\\' : '/'
+    const parentPath = node.path.slice(0, node.path.lastIndexOf(sep)) || sep
+
+    return {
+      ok: true,
+      undo: {
+        undoId: result.data.undoId,
+        path: node.path,
+        parentPath,
+        name: node.name,
+        type: node.type,
+      },
     }
-    return result.ok
   }, [])
 
-  return { tree, loadRoot, toggleExpand, collapseAll, peekDir, refresh, watchRefresh, createFile, createDir, rename, deleteNode }
+  const undoDelete = useCallback(async (entry: DeletedNodeUndo): Promise<boolean> => {
+    const result = await window.api.fs.undoDelete(entry.undoId)
+    if (!result.ok) return false
+    await watchRefresh(entry.parentPath)
+    return true
+  }, [watchRefresh])
+
+  return { tree, loadRoot, toggleExpand, collapseAll, peekDir, refresh, watchRefresh, createFile, createDir, rename, deleteNode, undoDelete }
 }

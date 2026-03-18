@@ -15,9 +15,19 @@ export interface FileSystemResult<T> {
   error?: string
 }
 
+export interface FileStatInfo {
+  type: FileType
+  size: number
+}
+
+export interface DeleteUndoInfo {
+  undoId: string
+}
+
 // Interface que abstrai operações de arquivo (local ou SFTP no futuro)
 export interface IFileSystem {
   listDir(dirPath: string): Promise<FileSystemResult<FileEntry[]>>
+  stat(targetPath: string): Promise<FileSystemResult<FileStatInfo>>
   readFile(filePath: string): Promise<FileSystemResult<string>>
   writeFile(filePath: string, content: string): Promise<FileSystemResult<void>>
   createFile(filePath: string): Promise<FileSystemResult<void>>
@@ -26,13 +36,16 @@ export interface IFileSystem {
   delete(targetPath: string): Promise<FileSystemResult<void>>
 }
 
+export type SSHAuthMethod = 'password' | 'key'
+
 // Configuração de conexão SSH/SFTP
 export interface SSHConfig {
+  id?: string
   label: string        // nome amigável, ex: "Minha VPS"
   host: string
   port: number         // padrão 22
   username: string
-  authMethod: 'password' | 'key'
+  authMethod: SSHAuthMethod
   password?: string
   keyPath?: string
   passphrase?: string
@@ -54,11 +67,30 @@ export interface WindowState {
   isFullScreen: boolean
 }
 
+// Perfil SSH armazenado integralmente criptografado (JSON serializado + safeStorage)
+export interface StoredSSHProfile {
+  id: string           // identificador opaco
+  payload: string      // base64 do buffer criptografado via safeStorage
+}
+
+// Perfil SSH sem campos sensíveis — usado na UI para listar/exibir
+export interface SSHProfileSummary {
+  id: string
+  label: string
+  host: string
+  port: number
+  username: string
+  authMethod: SSHAuthMethod
+  keyPath?: string
+  remotePath: string
+}
+
 // Preferências salvas com electron-store
 export interface AppPreferences {
   lastOpenedFolder: string | null
   windowState: WindowState
-  savedSSHConnections: SSHConfig[]
+  savedSSHConnections: SSHConfig[] // legacy — migrado para sshProfiles
+  sshProfiles: StoredSSHProfile[]
 }
 
 // Resultados de busca

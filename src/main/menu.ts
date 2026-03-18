@@ -48,9 +48,12 @@ export function buildMenu(win: BrowserWindow): void {
           click: () => send(win, 'save')
         },
         { type: 'separator' },
-        isMac
-          ? { role: 'close' as const }
-          : { role: 'quit' as const }
+        {
+          label: 'Fechar aba',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => send(win, 'closeTab')
+        },
+        ...(isMac ? [] : [{ type: 'separator' as const }, { role: 'quit' as const }])
       ]
     },
 

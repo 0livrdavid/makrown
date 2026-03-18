@@ -1,7 +1,7 @@
 import path from 'path'
 import { readFileSync } from 'fs'
 import { Client, type SFTPWrapper } from 'ssh2'
-import type { IFileSystem, FileEntry, FileSystemResult, SSHConfig } from '../../shared/types'
+import type { IFileSystem, FileEntry, FileSystemResult, FileStatInfo, SSHConfig } from '../../shared/types'
 
 export class RemoteFileSystem implements IFileSystem {
   private sftp: SFTPWrapper
@@ -30,6 +30,21 @@ export class RemoteFileSystem implements IFileSystem {
           } satisfies FileEntry
         })
         resolve({ ok: true, data: result })
+      })
+    })
+  }
+
+  async stat(targetPath: string): Promise<FileSystemResult<FileStatInfo>> {
+    return new Promise((resolve) => {
+      this.sftp.stat(targetPath, (err, stats) => {
+        if (err) return resolve({ ok: false, error: err.message })
+        resolve({
+          ok: true,
+          data: {
+            type: stats.isDirectory?.() ? 'directory' : 'file',
+            size: stats.size,
+          },
+        })
       })
     })
   }

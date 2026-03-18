@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, FolderOpen, FolderPlus, Server, Pencil } from 'lucide-react'
-import type { SSHConfig } from '../../../../shared/types'
+import type { SSHProfileSummary } from '../../../../shared/types'
 
 interface FolderSelectProps {
   currentPath: string
   isRemote: boolean
-  activeSSHConfig: SSHConfig | null
+  activeSSHConfig: SSHProfileSummary | null
   recentFolders: string[]
-  recentVPS: SSHConfig[]
+  recentVPS: SSHProfileSummary[]
   sshStatus?: 'connected' | 'reconnecting' | 'disconnected'
   onSelect: (path: string) => void
   onPickNew: () => void
   onConnectVPS: () => void
-  onConnectRecentVPS: (config: SSHConfig) => void
-  onEditVPS: (config: SSHConfig) => void
+  onConnectRecentVPS: (summary: SSHProfileSummary) => void
+  onEditVPS: (summary: SSHProfileSummary) => void
 }
 
 function baseName(path: string): string {
@@ -46,6 +46,9 @@ export function FolderSelect({
   }, [open])
 
   const others = recentFolders.filter((f) => f !== currentPath)
+  const otherVPS = activeSSHConfig
+    ? recentVPS.filter((p) => p.id !== activeSSHConfig.id)
+    : recentVPS
 
   return (
     <div ref={ref} className="relative">
@@ -123,32 +126,33 @@ export function FolderSelect({
             <span className="text-xs text-indigo-400">Abrir pasta...</span>
           </button>
 
-          {recentVPS.length > 0 && (
+          {otherVPS.length > 0 && (
             <>
               <div className="border-t border-zinc-700" />
               <div className="px-2 pb-1 pt-2">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-600">VPS recentes</span>
               </div>
               <div className="max-h-36 overflow-y-auto">
-                {recentVPS.map((cfg) => (
+                {otherVPS.map((summary) => (
                   <div
-                    key={`${cfg.host}:${cfg.port}:${cfg.username}`}
+                    key={summary.id}
                     className="group/item flex w-full items-center transition-colors hover:bg-zinc-700"
                   >
                     <button
-                      onClick={() => { onConnectRecentVPS(cfg); setOpen(false) }}
+                      onClick={() => { onConnectRecentVPS(summary); setOpen(false) }}
                       className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
                     >
                       <Server size={12} className="shrink-0 text-indigo-400" />
                       <div className="min-w-0">
-                        <div className="truncate text-xs text-zinc-300">{cfg.label || cfg.host}</div>
-                        <div className="truncate text-[10px] text-zinc-600">{cfg.username}@{cfg.host}:{cfg.port}</div>
+                        <div className="truncate text-xs text-zinc-300">{summary.label || summary.host}</div>
+                        <div className="truncate text-[10px] text-zinc-600">{summary.username}@{summary.host}:{summary.port}</div>
                       </div>
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onEditVPS(cfg); setOpen(false) }}
+                      onClick={(e) => { e.stopPropagation(); onEditVPS(summary); setOpen(false) }}
                       className="mr-1.5 rounded p-1 text-zinc-700 opacity-0 transition-all hover:bg-zinc-600 hover:text-zinc-300 group-hover/item:opacity-100"
                       title="Editar conexão"
+                      aria-label={`Editar conexão ${summary.label || summary.host}`}
                     >
                       <Pencil size={10} />
                     </button>

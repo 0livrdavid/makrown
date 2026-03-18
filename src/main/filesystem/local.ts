@@ -1,6 +1,6 @@
 import fs from 'fs/promises'
 import path from 'path'
-import type { IFileSystem, FileEntry, FileSystemResult } from '../../shared/types'
+import type { IFileSystem, FileEntry, FileSystemResult, FileStatInfo } from '../../shared/types'
 
 export class LocalFileSystem implements IFileSystem {
   async listDir(dirPath: string): Promise<FileSystemResult<FileEntry[]>> {
@@ -13,6 +13,21 @@ export class LocalFileSystem implements IFileSystem {
         extension: entry.isDirectory() ? null : path.extname(entry.name) || null
       }))
       return { ok: true, data: result }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  }
+
+  async stat(targetPath: string): Promise<FileSystemResult<FileStatInfo>> {
+    try {
+      const info = await fs.stat(targetPath)
+      return {
+        ok: true,
+        data: {
+          type: info.isDirectory() ? 'directory' : 'file',
+          size: info.size,
+        },
+      }
     } catch (err) {
       return { ok: false, error: (err as Error).message }
     }

@@ -1,13 +1,28 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, net, protocol } from 'electron'
 import { join } from 'path'
-import { registerFilesystemHandlers } from './ipc/filesystem'
+import { pathToFileURL } from 'url'
+import { readFileSync } from 'fs'
+import { cleanupFilesystemSession, registerFilesystemHandlers } from './ipc/filesystem'
 import { registerPreferencesHandlers } from './ipc/preferences'
 import { registerSSHHandlers } from './ipc/ssh'
 import { registerUpdaterHandlers } from './ipc/updater'
+import { registerCredentialsHandlers } from './ipc/credentials'
+import { registerTerminalHandlers, cleanupTerminalSessions } from './ipc/terminal'
 import { buildMenu } from './menu'
 import { store } from './store'
 
 app.name = 'Makrown'
+
+const MIME_MAP: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+  '.ico': 'image/x-icon', '.bmp': 'image/bmp',
+}
+
+function mimeFromExt(filePath: string): string {
+  const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase()
+  return MIME_MAP[ext] ?? 'application/octet-stream'
+}
 
 const isDev = !app.isPackaged
 
@@ -63,7 +78,7 @@ function createWindow(): void {
   })
 
   buildMenu(mainWindow)
-  if (!isDev) registerUpdaterHandlers(mainWindow)
+  registerUpdaterHandlers(mainWindow)
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -74,10 +89,30 @@ function createWindow(): void {
 
 ipcMain.on('app:version', (event) => { event.returnValue = app.getVersion() })
 
+// Register custom protocol to serve local files (images, etc.) in the renderer.
+// Usage in renderer: makrown-file:///absolute/path/to/image.png
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'makrown-file', privileges: { standard: false, secure: true, supportFetchAPI: true } }
+])
+
 app.whenReady().then(() => {
+  protocol.handle('makrown-file', (request) => {
+    const absPath = decodeURIComponent(request.url.slice('makrown-file://'.length))
+    try {
+      const data = readFileSync(absPath)
+      return new Response(data, {
+        headers: { 'Content-Type': mimeFromExt(absPath) }
+      })
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
+  })
+
   registerFilesystemHandlers()
   registerSSHHandlers()
   registerPreferencesHandlers()
+  registerCredentialsHandlers()
+  registerTerminalHandlers()
 
   createWindow()
 
@@ -92,4 +127,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  void cleanupFilesystemSession()
+  cleanupTerminalSessions()
 })

@@ -10,6 +10,7 @@ export const store = new Store<AppPreferences>({
       isMaximized: false,
       isFullScreen: false
     },
-    savedSSHConnections: []
+    savedSSHConnections: [],
+    sshProfiles: []
   }
 })

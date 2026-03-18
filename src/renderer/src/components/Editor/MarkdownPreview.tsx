@@ -2,15 +2,29 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeSlug from 'rehype-slug'
+import rehypeRaw from 'rehype-raw'
 import 'highlight.js/styles/github-dark.css'
 
 interface MarkdownPreviewProps {
   content: string
   fontFamily?: string
   fontSize?: number
+  /** Absolute path of the directory containing the current file — used to resolve relative image paths */
+  fileDir?: string
 }
 
-export function MarkdownPreview({ content, fontFamily, fontSize }: MarkdownPreviewProps): React.JSX.Element {
+function resolveImageSrc(src: string | undefined, fileDir: string | undefined): string | undefined {
+  if (!src) return src
+  // Already absolute URL (http, https, data) — leave as-is
+  if (/^(https?:|data:)/i.test(src)) return src
+  // Absolute local path
+  if (src.startsWith('/') && fileDir) return `makrown-file://${src}`
+  // Relative path — resolve against the file's directory
+  if (fileDir) return `makrown-file://${fileDir}/${src}`
+  return src
+}
+
+export function MarkdownPreview({ content, fontFamily, fontSize, fileDir }: MarkdownPreviewProps): React.JSX.Element {
   return (
     <div className="h-full overflow-y-auto bg-zinc-950 px-8 py-8">
       <div
@@ -19,7 +33,7 @@ export function MarkdownPreview({ content, fontFamily, fontSize }: MarkdownPrevi
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeHighlight, rehypeSlug]}
+          rehypePlugins={[rehypeRaw, rehypeHighlight, rehypeSlug]}
           components={{
             // Links abrem externamente
             a: ({ href, children }) => (
@@ -116,9 +130,9 @@ export function MarkdownPreview({ content, fontFamily, fontSize }: MarkdownPrevi
             li: ({ children }) => <li className="leading-7" style={{ fontFamily, fontSize }}>{children}</li>,
             // HR
             hr: () => <hr className="my-6 border-zinc-800" />,
-            // Imagens
+            // Imagens — resolve relative paths to local files via custom protocol
             img: ({ src, alt }) => (
-              <img src={src} alt={alt} className="my-4 max-w-full rounded-lg" />
+              <img src={resolveImageSrc(src, fileDir)} alt={alt} className="my-4 max-w-full rounded-lg" />
             ),
             // Strong / em
             strong: ({ children }) => (

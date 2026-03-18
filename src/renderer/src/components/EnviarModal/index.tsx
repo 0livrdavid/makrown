@@ -3,6 +3,7 @@ import { X, Send, FileText } from 'lucide-react'
 import { encode } from 'gpt-tokenizer'
 import type { OpenTab } from '../Editor'
 import { computeLineDiff } from './diff'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 
 function formatBytesAbs(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -29,6 +30,7 @@ export function EnviarModal({ dirtyTabs, onCancel, onEnviar }: EnviarModalProps)
   const [selectedPath, setSelectedPath] = useState<string>(dirtyTabs[0]?.path ?? '')
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set(dirtyTabs.map((t) => t.path)))
   const [sending, setSending] = useState(false)
+  const dialogRef = useModalFocusTrap({ onClose: onCancel })
 
   const selectedTab = dirtyTabs.find((t) => t.path === selectedPath) ?? dirtyTabs[0]
 
@@ -70,7 +72,14 @@ export function EnviarModal({ dirtyTabs, onCancel, onEnviar }: EnviarModalProps)
   const changedLines = diff.filter((l) => l.type !== 'equal').length
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950 text-zinc-100">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="enviar-modal-title"
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex flex-col bg-zinc-950 text-zinc-100"
+    >
       {/* Header */}
       <div
         className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-800 pl-20 pr-4"
@@ -78,7 +87,7 @@ export function EnviarModal({ dirtyTabs, onCancel, onEnviar }: EnviarModalProps)
       >
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <Send size={14} className="text-indigo-400" />
-          <span className="text-sm font-medium">Enviar alterações</span>
+          <span id="enviar-modal-title" className="text-sm font-medium">Enviar alterações</span>
           <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
             {dirtyTabs.length} arquivo{dirtyTabs.length !== 1 ? 's' : ''}
           </span>
@@ -87,6 +96,7 @@ export function EnviarModal({ dirtyTabs, onCancel, onEnviar }: EnviarModalProps)
           onClick={onCancel}
           className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          aria-label="Fechar envio de alterações"
         >
           <X size={14} />
         </button>

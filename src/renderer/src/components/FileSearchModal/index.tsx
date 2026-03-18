@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Search } from 'lucide-react'
 import type { SearchFileResult } from '../../../../shared/types'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 
 interface FileSearchModalProps {
   rootPath: string
@@ -14,6 +15,7 @@ export function FileSearchModal({ rootPath, onOpen, onClose }: FileSearchModalPr
   const [selected, setSelected] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dialogRef = useModalFocusTrap({ onClose })
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -65,6 +67,11 @@ export function FileSearchModal({ rootPath, onOpen, onClose }: FileSearchModalPr
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Buscar arquivo"
+        tabIndex={-1}
         className="w-full max-w-xl rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
@@ -113,7 +120,19 @@ export function FileSearchModal({ rootPath, onOpen, onClose }: FileSearchModalPr
         )}
 
         {query.trim() && results.length === 0 && (
-          <p className="px-4 py-6 text-center text-sm text-zinc-600">Nenhum arquivo encontrado</p>
+          <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <FileText size={20} className="text-zinc-700" />
+            <div>
+              <p className="text-sm font-medium text-zinc-400">Nenhum arquivo encontrado</p>
+              <p className="mt-1 text-xs text-zinc-600">Tente outro nome ou ajuste parte do caminho.</p>
+            </div>
+          </div>
+        )}
+
+        {!query.trim() && (
+          <div className="px-4 py-6 text-center text-xs text-zinc-600">
+            Digite para procurar um arquivo dentro de <span className="text-zinc-500">{rootName}</span>.
+          </div>
         )}
 
         {/* Dica */}

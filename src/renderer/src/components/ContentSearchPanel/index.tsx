@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Search, Loader2 } from 'lucide-react'
 import type { SearchContentResult } from '../../../../shared/types'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 
 interface ContentSearchPanelProps {
   rootPath: string
@@ -14,6 +15,7 @@ export function ContentSearchPanel({ rootPath, onOpen, onClose }: ContentSearchP
   const [loading, setLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dialogRef = useModalFocusTrap({ onClose })
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -73,6 +75,11 @@ export function ContentSearchPanel({ rootPath, onOpen, onClose }: ContentSearchP
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Buscar no conteúdo"
+        tabIndex={-1}
         className="w-full max-w-2xl rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
@@ -136,7 +143,13 @@ export function ContentSearchPanel({ rootPath, onOpen, onClose }: ContentSearchP
         )}
 
         {query.trim().length >= 2 && !loading && results.length === 0 && (
-          <p className="px-4 py-6 text-center text-sm text-zinc-600">Nenhum resultado encontrado</p>
+          <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <Search size={20} className="text-zinc-700" />
+            <div>
+              <p className="text-sm font-medium text-zinc-400">Nenhuma ocorrência encontrada</p>
+              <p className="mt-1 text-xs text-zinc-600">Tente outro termo ou use uma busca menos específica.</p>
+            </div>
+          </div>
         )}
 
         {query.trim().length < 2 && (

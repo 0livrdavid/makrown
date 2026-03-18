@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import type { Client } from 'ssh2'
 import { createRemoteFileSystem } from '../filesystem'
-import { setActiveFs } from './filesystem'
+import { cleanupFilesystemSession, setActiveFs } from './filesystem'
 import { LocalFileSystem } from '../filesystem'
 import type { SSHConfig } from '../../shared/types'
 
@@ -15,6 +15,10 @@ export type SSHStatus = 'disconnected' | 'connected' | 'reconnecting'
 
 export function getSshStatus(): SSHStatus {
   return activeClient ? 'connected' : 'disconnected'
+}
+
+export function getActiveClient(): Client | null {
+  return activeClient
 }
 
 function emitStatus(status: SSHStatus, extra?: Record<string, unknown>): void {
@@ -64,6 +68,7 @@ function setupClientListeners(client: Client, config: SSHConfig): void {
     if (lastConfig) {
       attemptReconnect(config, 0)
     } else {
+      void cleanupFilesystemSession()
       setActiveFs(new LocalFileSystem())
       emitStatus('disconnected')
     }
@@ -75,6 +80,7 @@ function setupClientListeners(client: Client, config: SSHConfig): void {
     if (lastConfig) {
       attemptReconnect(config, 0)
     } else {
+      void cleanupFilesystemSession()
       setActiveFs(new LocalFileSystem())
       emitStatus('disconnected')
     }
@@ -110,6 +116,7 @@ export function registerSSHHandlers(): void {
       try { activeClient.end() } catch { /* ignore */ }
       activeClient = null
     }
+    void cleanupFilesystemSession()
     setActiveFs(new LocalFileSystem())
     return { ok: true }
   })

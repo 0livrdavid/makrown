@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Filter, RotateCcw } from 'lucide-react'
 import type { FilterConfig } from './filterUtils'
 import { DEFAULT_FILTER } from './filterUtils'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 
 interface FilterModalProps {
   config: FilterConfig
@@ -50,6 +51,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export function FilterModal({ config, onSave, onClose }: FilterModalProps): React.JSX.Element {
   const [draft, setDraft] = useState<FilterConfig>(config)
+  const dialogRef = useModalFocusTrap({ onClose })
 
   function set<K extends keyof FilterConfig>(key: K, value: FilterConfig[K]): void {
     setDraft((prev) => ({ ...prev, [key]: value }))
@@ -63,6 +65,11 @@ export function FilterModal({ config, onSave, onClose }: FilterModalProps): Reac
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="filter-modal-title"
+        tabIndex={-1}
         className="w-[480px] rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
@@ -70,7 +77,7 @@ export function FilterModal({ config, onSave, onClose }: FilterModalProps): Reac
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
           <div className="flex items-center gap-2 text-zinc-300">
             <Filter size={13} />
-            <span className="text-sm font-medium">Filtros da árvore</span>
+            <span id="filter-modal-title" className="text-sm font-medium">Filtros da árvore</span>
           </div>
           {isModified && (
             <button

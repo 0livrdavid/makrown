@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, app } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
 autoUpdater.autoDownload = false
@@ -36,6 +36,10 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle('updater:check', async () => {
+    if (!app.isPackaged) {
+      send('updater:not-available')
+      return
+    }
     try {
       await autoUpdater.checkForUpdates()
     } catch (err) {
@@ -54,4 +58,17 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('updater:install', () => {
     autoUpdater.quitAndInstall()
   })
+
+  // Auto-check on startup (packaged builds only)
+  if (app.isPackaged) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      setTimeout(async () => {
+        try {
+          await autoUpdater.checkForUpdates()
+        } catch {
+          // silent — don't bother the user on startup
+        }
+      }, 5000)
+    })
+  }
 }

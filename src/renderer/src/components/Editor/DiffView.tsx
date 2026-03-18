@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Send, Loader2, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
-import { computeLineDiff, groupIntoHunks, applyRevert, applyAccept, type Hunk } from '../EnviarModal/diff'
+import React, { useMemo, useState } from 'react'
+import { Send, Save, Loader2, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
+import { computeLineDiff, groupIntoHunks, applyRevert, applyAccept, type Hunk, type DiffLine } from '../EnviarModal/diff'
 
 interface DiffViewProps {
   fileName: string
@@ -8,6 +8,7 @@ interface DiffViewProps {
   modified: string
   original: string
   isUploading: boolean
+  isRemote: boolean
   onEnviarFile: (path: string) => Promise<void>
   onContentChange?: (newContent: string) => void   // revert ops — updates local content
   onOriginalChange?: (newOriginal: string) => void // accept ops — updates baseline
@@ -19,6 +20,7 @@ export function DiffView({
   modified,
   original,
   isUploading,
+  isRemote,
   onEnviarFile,
   onContentChange,
   onOriginalChange,
@@ -32,20 +34,23 @@ export function DiffView({
   const hasChanges  = diff.some((l) => l.type !== 'equal')
   const changedLines = diff.filter((l) => l.type !== 'equal').length
 
-  // Map diff-line index → hunk (for injecting the action bar before each hunk's first line)
-  const lineToHunk = useMemo(() => {
+  // Map diff-line index → hunk, only for the first line of each hunk
+  const firstLineHunk = useMemo(() => {
     const map = new Map<number, Hunk>()
-    diff.forEach((line, i) => {
-      if (line.type !== 'equal') {
-        const hunk = hunks.find((h) => h.lines.includes(line))
+    // Build a Set of first hunk lines for O(1) lookup
+    const firstLines = new Set<DiffLine>()
+    for (const hunk of hunks) {
+      if (hunk.lines.length > 0) firstLines.add(hunk.lines[0])
+    }
+    // Single pass: find each first hunk line by identity
+    for (let i = 0; i < diff.length; i++) {
+      if (firstLines.has(diff[i])) {
+        const hunk = hunks.find((h) => h.lines[0] === diff[i])
         if (hunk) map.set(i, hunk)
       }
-    })
+    }
     return map
   }, [diff, hunks])
-
-  const isFirstOfHunk = (i: number): boolean =>
-    diff[i].type !== 'equal' && (i === 0 || diff[i - 1].type === 'equal')
 
   async function handleConfirmEnviar(): Promise<void> {
     setConfirmingEnviar(false)
@@ -117,33 +122,44 @@ export function DiffView({
 
             <div className="h-3 w-px bg-zinc-700" />
 
-            {/* Enviar */}
-            {confirmingEnviar ? (
-              <>
-                <span className="text-xs text-zinc-400">Confirmar envio?</span>
+            {/* Enviar (VPS) / Salvar (local) */}
+            {isRemote ? (
+              confirmingEnviar ? (
+                <>
+                  <span className="text-xs text-zinc-400">Confirmar envio?</span>
+                  <button
+                    onClick={() => setConfirmingEnviar(false)}
+                    className="rounded px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleConfirmEnviar}
+                    disabled={isUploading}
+                    className="flex items-center gap-1.5 rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {isUploading ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                    Enviar
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={() => setConfirmingEnviar(false)}
-                  className="rounded px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleConfirmEnviar}
+                  onClick={() => setConfirmingEnviar(true)}
                   disabled={isUploading}
-                  className="flex items-center gap-1.5 rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium text-indigo-400 transition-colors hover:bg-zinc-800 hover:text-indigo-300 disabled:opacity-50"
                 >
                   {isUploading ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
                   Enviar
                 </button>
-              </>
+              )
             ) : (
               <button
-                onClick={() => setConfirmingEnviar(true)}
+                onClick={handleConfirmEnviar}
                 disabled={isUploading}
-                className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium text-indigo-400 transition-colors hover:bg-zinc-800 hover:text-indigo-300 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
               >
-                {isUploading ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                Enviar
+                {isUploading ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                Salvar
               </button>
             )}
           </div>
@@ -167,13 +183,13 @@ export function DiffView({
             {diff.map((line, i) => {
               const isAdded   = line.type === 'added'
               const isRemoved = line.type === 'removed'
-              const hunk      = lineToHunk.get(i)
+              const hunk      = firstLineHunk.get(i)
 
               return (
-                <>
+                <React.Fragment key={i}>
                   {/* Hunk action bar — shown before first line of each hunk */}
-                  {isFirstOfHunk(i) && hunk && (
-                    <tr key={`hh-${hunk.id}`} className="border-y border-zinc-700/30 bg-zinc-900/60">
+                  {hunk && (
+                    <tr className="border-y border-zinc-700/30 bg-zinc-900/60">
                       <td colSpan={2} className="px-3 py-0.5">
                         <div className="flex items-center justify-end gap-1">
                           {onContentChange && (
@@ -201,7 +217,7 @@ export function DiffView({
                     </tr>
                   )}
 
-                  <tr key={i} className="group">
+                  <tr className="group">
                     {/* Left — modified */}
                     <td
                       className={`w-1/2 border-r border-zinc-800 align-top ${
@@ -244,7 +260,7 @@ export function DiffView({
                       )}
                     </td>
                   </tr>
-                </>
+                </React.Fragment>
               )
             })}
           </tbody>

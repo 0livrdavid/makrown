@@ -9,10 +9,26 @@
 
 set -e
 
+# Help
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  echo "Uso: ./scripts/release.sh [patch|minor|major]"
+  echo ""
+  echo "Tipos de release:"
+  echo "  patch  (padrão)  0.1.0 → 0.1.1"
+  echo "  minor            0.1.0 → 0.2.0"
+  echo "  major            0.1.0 → 1.0.0"
+  echo ""
+  echo "Requisitos:"
+  echo "  - Estar na branch 'main'"
+  echo "  - Sem mudanças pendentes (tudo commitado)"
+  exit 0
+fi
+
 TYPE=${1:-patch}
 
 if [[ "$TYPE" != "patch" && "$TYPE" != "minor" && "$TYPE" != "major" ]]; then
   echo "❌ Tipo inválido: '$TYPE'. Use: patch | minor | major"
+  echo "   Use --help para mais informações."
   exit 1
 fi
 

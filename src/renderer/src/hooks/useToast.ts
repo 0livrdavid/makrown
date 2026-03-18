@@ -2,15 +2,26 @@ import { useCallback, useRef, useState } from 'react'
 
 export type ToastType = 'success' | 'error' | 'info'
 
+export interface ToastAction {
+  label: string
+  onClick: () => void | Promise<void>
+}
+
+export interface ToastOptions {
+  action?: ToastAction
+  durationMs?: number
+}
+
 export interface Toast {
   id: string
   message: string
   type: ToastType
+  action?: ToastAction
 }
 
 export function useToast(): {
   toasts: Toast[]
-  addToast: (message: string, type?: ToastType) => void
+  addToast: (message: string, type?: ToastType, options?: ToastOptions) => void
   removeToast: (id: string) => void
 } {
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -23,13 +34,13 @@ export function useToast(): {
     setToasts((prev) => prev.filter((toast) => toast.id !== id))
   }, [])
 
-  const addToast = useCallback((message: string, type: ToastType = 'info') => {
+  const addToast = useCallback((message: string, type: ToastType = 'info', options?: ToastOptions) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    setToasts((prev) => [...prev, { id, message, type }])
+    setToasts((prev) => [...prev, { id, message, type, action: options?.action }])
     const timer = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
       timers.current.delete(id)
-    }, 3500)
+    }, options?.durationMs ?? 3500)
     timers.current.set(id, timer)
   }, [])
 

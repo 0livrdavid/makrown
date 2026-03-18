@@ -32,8 +32,12 @@ function lcs(a: string[], b: string[]): number[][] {
 }
 
 export function computeLineDiff(original: string, modified: string): DiffLine[] {
-  const aLines = original.split('\n')
-  const bLines = modified.split('\n')
+  // Normalise trailing newlines — Milkdown may add a trailing \n that the
+  // disk content doesn't have. Without this, a single empty trailing line
+  // shows up as a phantom diff.
+  const trimmed = (s: string): string => s.replace(/\n+$/, '')
+  const aLines = trimmed(original).split('\n')
+  const bLines = trimmed(modified).split('\n')
 
   // Guard for very large files — skip diff
   if (aLines.length > 3000 || bLines.length > 3000) {
