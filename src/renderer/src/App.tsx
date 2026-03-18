@@ -14,9 +14,22 @@ import { ToastContext } from './contexts/ToastContext'
 import { useToast } from './hooks/useToast'
 import type { TreeNode } from './hooks/useFileTree'
 import type { SSHConfig, SSHProfileSummary } from '../../shared/types'
+import { shortcutTitle, shortcutTokens } from './utils/shortcuts'
 
 const DRAFT_PREFIX = 'makrown:draft:'
 const LARGE_FILE_BYTES = 1 * 1024 * 1024
+const WELCOME_MESSAGES = [
+  'Seu workspace Markdown está pronto.',
+  'Abra uma pasta e continue de onde parou.',
+  'Hoje parece um bom dia para organizar ideias.',
+  'Entre arquivos locais e VPS, escolha seu ponto de partida.',
+  'Escreva localmente. Publique com precisão.',
+  'Tudo pronto para mais uma sessão.',
+  'Comece por uma pasta ou conecte um servidor.',
+  'Markdown, terminal e VPS no mesmo lugar.',
+  'O próximo arquivo está te esperando.',
+  'Menos atrito, mais fluxo.',
+] as const
 
 function saveDraft(path: string, content: string): void {
   localStorage.setItem(DRAFT_PREFIX + path, content)
@@ -229,6 +242,14 @@ function folderBaseName(path: string): string {
   return path.split('/').pop() ?? path
 }
 
+function getDailyWelcomeMessage(): string {
+  const today = new Date()
+  const key = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`
+  let hash = 0
+  for (const ch of key) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
+  return WELCOME_MESSAGES[hash % WELCOME_MESSAGES.length]
+}
+
 function AppBrandIcon(): React.JSX.Element {
   return (
     <svg width="64" height="64" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
@@ -240,6 +261,8 @@ function AppBrandIcon(): React.JSX.Element {
 }
 
 function App(): React.JSX.Element {
+  const { mod } = shortcutTokens
+  const welcomeMessage = getDailyWelcomeMessage()
   const [folder, setFolder] = useState<string | null>(null)
   const [recentFolders, setRecentFolders] = useState<string[]>(loadRecentFolders)
   const [loading, setLoading] = useState(true)
@@ -1032,6 +1055,7 @@ function App(): React.JSX.Element {
         }))
       }
       else if (action === 'layout:preview') setLayoutMode('editor')
+      else if (action === 'layout:editor') setLayoutMode('raw')
       else if (action === 'layout:visualize') setLayoutMode('visualize')
       else if (action === 'search:files') setShowFileSearch(true)
       else if (action === 'search:content') setShowContentSearch(true)
@@ -1062,13 +1086,14 @@ function App(): React.JSX.Element {
               <AppBrandIcon />
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">Makrown</h1>
-            <p className="text-sm text-zinc-500">Abra uma pasta para começar</p>
+            <p className="max-w-sm text-sm text-zinc-500">{welcomeMessage}</p>
           </div>
 
           <div className="flex flex-col items-center gap-2">
             <button
               onClick={handleSelectFolder}
               className="w-72 rounded-md bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+              title={shortcutTitle('Abrir pasta', [mod, 'O'])}
             >
               Abrir pasta
             </button>
@@ -1160,6 +1185,9 @@ function App(): React.JSX.Element {
               )}
             </div>
           )}
+          <div className="pt-2 text-[11px] text-zinc-600">
+            Versão {window.api.appVersion}
+          </div>
           </div>
         </div>
         {showSSHModal && (
@@ -1251,6 +1279,7 @@ function App(): React.JSX.Element {
           isOpen={terminalOpen}
           height={terminalHeight}
           onHeightChange={handleTerminalHeightChange}
+          onClose={() => setTerminalOpen(false)}
           cwd={folder}
           isRemote={isRemote}
         />

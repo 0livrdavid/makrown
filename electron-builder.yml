@@ -13,6 +13,7 @@ publish:
   provider: github
   owner: 0livrdavid
   repo: makrown
+  releaseType: release
 mac:
   icon: build/icon.icns
   target:

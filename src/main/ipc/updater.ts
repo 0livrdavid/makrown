@@ -4,60 +4,69 @@ import { autoUpdater } from 'electron-updater'
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 
+let currentWindow: BrowserWindow | null = null
+let updaterRegistered = false
+
 export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
+  currentWindow = mainWindow
+
   const send = (channel: string, payload?: unknown): void => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(channel, payload)
+    if (currentWindow && !currentWindow.isDestroyed()) {
+      currentWindow.webContents.send(channel, payload)
     }
   }
 
-  autoUpdater.on('checking-for-update', () => {
-    send('updater:checking')
-  })
+  if (!updaterRegistered) {
+    updaterRegistered = true
 
-  autoUpdater.on('update-available', (info) => {
-    send('updater:available', { version: info.version, releaseNotes: info.releaseNotes ?? null })
-  })
+    autoUpdater.on('checking-for-update', () => {
+      send('updater:checking')
+    })
 
-  autoUpdater.on('update-not-available', () => {
-    send('updater:not-available')
-  })
+    autoUpdater.on('update-available', (info) => {
+      send('updater:available', { version: info.version, releaseNotes: info.releaseNotes ?? null })
+    })
 
-  autoUpdater.on('download-progress', (progress) => {
-    send('updater:progress', { percent: Math.round(progress.percent) })
-  })
-
-  autoUpdater.on('update-downloaded', () => {
-    send('updater:downloaded')
-  })
-
-  autoUpdater.on('error', (err) => {
-    send('updater:error', { message: err.message })
-  })
-
-  ipcMain.handle('updater:check', async () => {
-    if (!app.isPackaged) {
+    autoUpdater.on('update-not-available', () => {
       send('updater:not-available')
-      return
-    }
-    try {
-      await autoUpdater.checkForUpdates()
-    } catch (err) {
-      send('updater:error', { message: (err as Error).message })
-    }
-  })
+    })
 
-  ipcMain.handle('updater:download', async () => {
-    try {
-      await autoUpdater.downloadUpdate()
-    } catch (err) {
-      send('updater:error', { message: (err as Error).message })
-    }
-  })
+    autoUpdater.on('download-progress', (progress) => {
+      send('updater:progress', { percent: Math.round(progress.percent) })
+    })
 
-  ipcMain.handle('updater:install', () => {
-    autoUpdater.quitAndInstall()
-  })
+    autoUpdater.on('update-downloaded', () => {
+      send('updater:downloaded')
+    })
+
+    autoUpdater.on('error', (err) => {
+      send('updater:error', { message: err.message })
+    })
+
+    ipcMain.handle('updater:check', async () => {
+      if (!app.isPackaged) {
+        send('updater:not-available')
+        return
+      }
+      try {
+        await autoUpdater.checkForUpdates()
+      } catch (err) {
+        send('updater:error', { message: (err as Error).message })
+      }
+    })
+
+    ipcMain.handle('updater:download', async () => {
+      try {
+        await autoUpdater.downloadUpdate()
+      } catch (err) {
+        send('updater:error', { message: (err as Error).message })
+      }
+    })
+
+    ipcMain.handle('updater:install', () => {
+      autoUpdater.quitAndInstall()
+    })
+  }
 
   // Auto-check on startup (packaged builds only)
   if (app.isPackaged) {

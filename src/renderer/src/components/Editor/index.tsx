@@ -4,6 +4,7 @@ import { encode } from 'gpt-tokenizer'
 import { MilkdownEditor } from './MilkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
 import { DiffView } from './DiffView'
+import { shortcutTitle, shortcutTokens } from '../../utils/shortcuts'
 
 export interface OpenTab {
   path: string
@@ -195,6 +196,12 @@ function ActionBar({
   }, [stats.bytes, tab.fileSizeBytes])
 
   const effectiveLayoutMode: LayoutMode = isLargeFile ? 'raw' : layoutMode
+  const { mod } = shortcutTokens
+  const layoutShortcutMap: Partial<Record<LayoutMode, string[]>> = {
+    editor: [mod, '1'],
+    raw: [mod, '2'],
+    visualize: [mod, '3'],
+  }
   const layoutOptions: [LayoutMode, React.ElementType, string][] = isLargeFile
     ? [['raw', FileText, 'Raw']]
     : [
@@ -225,6 +232,7 @@ function ActionBar({
               key={mode}
               onClick={() => onLayoutChange(mode)}
               className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${effectiveLayoutMode === mode ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+              title={shortcutTitle(`Modo ${label}`, layoutShortcutMap[mode])}
             >
               <Icon size={11} />
               {label}
@@ -252,15 +260,15 @@ function ActionBar({
             }
           </button>
         ) : (
-          <button
-            onClick={() => onSave(tab.path, tab.content)}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+            <button
+              onClick={() => onSave(tab.path, tab.content)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
               tab.isDirty
                 ? 'bg-indigo-600 text-white hover:bg-indigo-500'
                 : 'text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'
             }`}
-            title="Salvar (Cmd+S)"
-          >
+              title={shortcutTitle('Salvar', [mod, 'S'])}
+            >
             <Save size={11} />
             {tab.isDirty ? 'Salvar' : 'Salvo'}
           </button>
@@ -293,6 +301,7 @@ export function Editor({
   isRemote,
   autoSaveEnabled = false,
 }: EditorProps): React.JSX.Element {
+  const { mod } = shortcutTokens
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
 
@@ -412,6 +421,7 @@ export function Editor({
                   onClick={(e) => { e.stopPropagation(); onTabClose(tab.path) }}
                   className="ml-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 hover:bg-zinc-700"
                   aria-label={`Fechar aba ${tab.name}`}
+                  title={shortcutTitle('Fechar aba', [mod, 'W'])}
                 >
                   <X size={10} />
                 </button>
@@ -462,7 +472,7 @@ export function Editor({
           <button
             onClick={onToggleTerminal}
             className={`rounded p-1.5 transition-colors hover:bg-zinc-700 ${terminalOpen ? 'text-indigo-400' : 'text-zinc-600 hover:text-zinc-300'}`}
-            title="Terminal (Ctrl+`)"
+            title={shortcutTitle(terminalOpen ? 'Ocultar terminal' : 'Abrir terminal', [mod, '`'])}
             aria-label="Abrir terminal"
           >
             <Terminal size={13} />
@@ -470,7 +480,7 @@ export function Editor({
           <button
             onClick={onOpenSettings}
             className="rounded p-1.5 text-zinc-600 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
-            title="Configurações"
+            title={shortcutTitle('Configurações', shortcutTokens.isMac ? [mod, ','] : undefined)}
             aria-label="Abrir configurações"
           >
             <Settings size={13} />

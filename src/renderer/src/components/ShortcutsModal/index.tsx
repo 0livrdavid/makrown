@@ -1,14 +1,12 @@
 import { X } from 'lucide-react'
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
+import { shortcutTokens } from '../../utils/shortcuts'
 
 interface ShortcutsModalProps {
   onClose: () => void
 }
 
-const isMac = typeof window !== 'undefined' && window.api?.platform === 'darwin'
-const Mod = isMac ? '⌘' : 'Ctrl'
-const Shift = '⇧'
-const Alt = isMac ? '⌥' : 'Alt'
+const { isMac, mod: Mod, shift: Shift, alt: Alt } = shortcutTokens
 
 interface Shortcut {
   keys: string[]

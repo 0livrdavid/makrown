@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Plus, X, Terminal as TerminalIcon } from 'lucide-react'
 import { TerminalTab } from './TerminalTab'
+import { shortcutTitle, shortcutTokens } from '../../utils/shortcuts'
 
 interface TabState {
   id: string
@@ -11,6 +12,7 @@ interface TerminalPanelProps {
   isOpen: boolean
   height: number
   onHeightChange: (h: number) => void
+  onClose: () => void
   cwd: string
   isRemote: boolean
 }
@@ -22,7 +24,8 @@ function newId(): string {
 const MIN_HEIGHT = 120
 const MAX_HEIGHT_RATIO = 0.7
 
-export function TerminalPanel({ isOpen, height, onHeightChange, cwd, isRemote }: TerminalPanelProps): React.JSX.Element | null {
+export function TerminalPanel({ isOpen, height, onHeightChange, onClose, cwd, isRemote }: TerminalPanelProps): React.JSX.Element | null {
+  const { mod } = shortcutTokens
   const [tabs, setTabs] = useState<TabState[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const dragRef = useRef(false)
@@ -93,36 +96,49 @@ export function TerminalPanel({ isOpen, height, onHeightChange, cwd, isRemote }:
       />
 
       {/* Tab bar */}
-      <div className="flex items-center gap-0 border-b border-zinc-800 bg-zinc-900 flex-shrink-0 overflow-x-auto">
+      <div className="flex items-center gap-0 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
         <div className="flex items-center pl-2 text-zinc-600 pr-1 flex-shrink-0">
           <TerminalIcon size={12} />
         </div>
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`group flex items-center gap-1.5 px-3 py-1.5 text-[11px] cursor-pointer select-none border-r border-zinc-800 transition-colors flex-shrink-0 ${
-              activeId === tab.id
-                ? 'bg-[#09090b] text-zinc-200'
-                : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-            }`}
-            onClick={() => setActiveId(tab.id)}
-          >
-            <span>{tab.label}</span>
-            <button
-              onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
-              className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400 transition-all"
+        <div className="flex min-w-0 flex-1 overflow-x-auto">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-[11px] cursor-pointer select-none border-r border-zinc-800 transition-colors flex-shrink-0 ${
+                activeId === tab.id
+                  ? 'bg-[#09090b] text-zinc-200'
+                  : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+              }`}
+              onClick={() => setActiveId(tab.id)}
             >
-              <X size={10} />
-            </button>
-          </div>
-        ))}
-        <button
-          onClick={addTab}
-          className="flex items-center justify-center px-2 py-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex-shrink-0"
-          title="Novo terminal"
-        >
-          <Plus size={12} />
-        </button>
+              <span>{tab.label}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+                className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400 transition-all"
+                title="Fechar terminal"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center border-l border-zinc-800">
+          <button
+            onClick={addTab}
+            className="flex items-center justify-center px-2 py-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex-shrink-0"
+            title="Novo terminal"
+          >
+            <Plus size={12} />
+          </button>
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center px-2 py-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex-shrink-0"
+            title={shortcutTitle('Ocultar terminal', [mod, '`'])}
+            aria-label="Ocultar terminal"
+          >
+            <X size={12} />
+          </button>
+        </div>
       </div>
 
       {/* Terminal tabs content */}
