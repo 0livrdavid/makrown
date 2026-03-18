@@ -229,6 +229,16 @@ function folderBaseName(path: string): string {
   return path.split('/').pop() ?? path
 }
 
+function AppBrandIcon(): React.JSX.Element {
+  return (
+    <svg width="64" height="64" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
+      <rect width="1024" height="1024" rx="224" fill="#09090B" />
+      <rect x="56" y="56" width="912" height="912" rx="184" fill="#0F0F13" stroke="#27272A" strokeWidth="12" />
+      <path d="M276 768V256H375L512 518L649 256H748V768H656V414L552 616H472L368 414V768H276Z" fill="#FACC15" />
+    </svg>
+  )
+}
+
 function App(): React.JSX.Element {
   const [folder, setFolder] = useState<string | null>(null)
   const [recentFolders, setRecentFolders] = useState<string[]>(loadRecentFolders)
@@ -1048,8 +1058,8 @@ function App(): React.JSX.Element {
           <div className="h-9 w-full shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
           <div className="flex flex-1 flex-col items-center justify-center gap-6">
           <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-800">
-              <FolderOpen size={32} className="text-amber-400" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl">
+              <AppBrandIcon />
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">Makrown</h1>
             <p className="text-sm text-zinc-500">Abra uma pasta para começar</p>
