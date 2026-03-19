@@ -118,6 +118,11 @@ export interface UpdaterProgressInfo {
   totalBytes: number
 }
 
+export interface UpdaterDownloadedInfo {
+  filePath: string | null
+  action: 'install' | 'reveal'
+}
+
 export interface UpdaterErrorInfo {
   message: string
 }

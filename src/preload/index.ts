@@ -9,6 +9,7 @@ import type {
   SSHProfileSummary,
   SSHConfig,
   UpdaterAvailableInfo,
+  UpdaterDownloadedInfo,
   UpdaterProgressInfo,
   UpdaterErrorInfo,
 } from '../shared/types'
@@ -184,8 +185,8 @@ const api = {
       ipcRenderer.on('updater:progress', h)
       return () => ipcRenderer.removeListener('updater:progress', h)
     },
-    onDownloaded: (cb: () => void): (() => void) => {
-      const h = (): void => cb()
+    onDownloaded: (cb: (info: UpdaterDownloadedInfo) => void): (() => void) => {
+      const h = (_e: Electron.IpcRendererEvent, info: UpdaterDownloadedInfo): void => cb(info)
       ipcRenderer.on('updater:downloaded', h)
       return () => ipcRenderer.removeListener('updater:downloaded', h)
     },

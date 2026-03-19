@@ -52,7 +52,9 @@ export function UpdateToast({
                 'Você pode baixar em segundo plano e continuar usando o app normalmente.'}
               {state.kind === 'downloading' && progressDetails}
               {state.kind === 'downloaded' &&
-                'O app pode reiniciar agora para aplicar a nova versão.'}
+                (state.action === 'reveal'
+                  ? 'O instalador foi baixado. O Finder foi aberto para você concluir a instalação manualmente.'
+                  : 'O app pode reiniciar agora para aplicar a nova versão.')}
               {state.kind === 'error' && state.message}
             </p>
           </div>
@@ -100,7 +102,7 @@ export function UpdateToast({
               onClick={onInstall}
               className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
             >
-              Reiniciar e instalar
+              {state.action === 'reveal' ? 'Mostrar no Finder' : 'Reiniciar e instalar'}
             </button>
           )}
         </div>

@@ -1,4 +1,4 @@
-import type { UpdaterProgressInfo } from '../../../shared/types'
+import type { UpdaterDownloadedInfo, UpdaterProgressInfo } from '../../../shared/types'
 
 export type UpdateState =
   | { kind: 'idle' }
@@ -13,7 +13,7 @@ export type UpdateState =
       totalBytes: number
       bytesPerSecond: number
     }
-  | { kind: 'downloaded'; version: string }
+  | { kind: 'downloaded'; version: string; filePath: string | null; action: UpdaterDownloadedInfo['action'] }
   | { kind: 'error'; message: string; details?: string }
 
 export function getUpdateVersion(state: UpdateState): string | null {

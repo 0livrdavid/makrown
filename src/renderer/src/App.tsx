@@ -369,8 +369,13 @@ function App(): React.JSX.Element {
       window.api.updater.onProgress((progress) => {
         setUpdateState((prev) => toDownloadingState(getUpdateVersion(prev) ?? 'nova versão', progress))
       }),
-      window.api.updater.onDownloaded(() => {
-        setUpdateState((prev) => ({ kind: 'downloaded', version: getUpdateVersion(prev) ?? 'nova versão' }))
+      window.api.updater.onDownloaded((info) => {
+        setUpdateState((prev) => ({
+          kind: 'downloaded',
+          version: getUpdateVersion(prev) ?? 'nova versão',
+          filePath: info.filePath,
+          action: info.action,
+        }))
       }),
       window.api.updater.onError((error) => {
         const next = describeUpdaterError(error.message)

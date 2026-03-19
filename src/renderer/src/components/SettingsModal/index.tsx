@@ -474,7 +474,9 @@ function UpdateSection({
             Atualização pronta para instalar: <span className="font-mono">{state.version}</span>
           </p>
           <p className="mt-0.5 text-[11px] text-emerald-400/70">
-            O aplicativo vai reiniciar para aplicar.
+            {state.action === 'reveal'
+              ? 'O instalador foi baixado. Abra pelo Finder para concluir manualmente.'
+              : 'O aplicativo vai reiniciar para aplicar.'}
           </p>
         </div>
       )}
@@ -518,7 +520,7 @@ function UpdateSection({
             onClick={onInstallUpdate}
             className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
           >
-            Reiniciar e instalar
+            {state.action === 'reveal' ? 'Mostrar no Finder' : 'Reiniciar e instalar'}
           </button>
         )}
       </div>
