@@ -16,9 +16,11 @@ jobs:
       - name: Ensure GitHub release exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
+          gh release view "${GITHUB_REF_NAME}" --repo "${GH_REPO}" >/dev/null 2>&1 || \
           gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GH_REPO}" \
             --title "${GITHUB_REF_NAME}" \
             --notes "Release ${GITHUB_REF_NAME}" \
             --latest
