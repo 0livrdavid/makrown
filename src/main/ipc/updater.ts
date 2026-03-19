@@ -168,14 +168,21 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
 
     ipcMain.handle('updater:install', () => {
       if (process.platform === 'darwin') {
-        if (downloadedInstallerPath) {
-          shell.showItemInFolder(downloadedInstallerPath)
+        if (!downloadedInstallerPath) {
+          const payload: UpdaterErrorInfo = {
+            message: 'Nenhum instalador baixado foi encontrado para abrir.',
+          }
+          send('updater:error', payload)
           return
         }
-        const payload: UpdaterErrorInfo = {
-          message: 'Nenhum instalador baixado foi encontrado para abrir no Finder.',
-        }
-        send('updater:error', payload)
+
+        void shell.openPath(downloadedInstallerPath).then((result) => {
+          if (result) {
+            shell.showItemInFolder(downloadedInstallerPath)
+          }
+        }).catch(() => {
+          shell.showItemInFolder(downloadedInstallerPath)
+        })
         return
       }
       autoUpdater.quitAndInstall()
