@@ -11,7 +11,10 @@
     "package": "electron-vite build && electron-builder --config electron-builder.yml",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true"
   },
-  "author": "",
+  "author": {
+    "name": "David Oliveira",
+    "email": "olivrdavid@gmail.com"
+  },
   "license": "MIT",
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
