@@ -1,7 +1,7 @@
 {
   "name": "makrown",
   "productName": "Makrown",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Markdown reader and editor for local and remote files",
   "main": "./out/main/index.js",
   "scripts": {
