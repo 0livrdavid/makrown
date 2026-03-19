@@ -4,6 +4,7 @@ import { encode } from 'gpt-tokenizer'
 import { MilkdownEditor } from './MilkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
 import { DiffView } from './DiffView'
+import { ShortcutTooltip } from '../ShortcutTooltip'
 import { shortcutTitle, shortcutTokens } from '../../utils/shortcuts'
 
 export interface OpenTab {
@@ -228,15 +229,15 @@ function ActionBar({
         {/* Layout toggle */}
         <div className="flex items-center gap-0.5 rounded-md bg-zinc-900 p-0.5 ring-1 ring-zinc-800">
           {layoutOptions.map(([mode, Icon, label]) => (
-            <button
-              key={mode}
-              onClick={() => onLayoutChange(mode)}
-              className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${effectiveLayoutMode === mode ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-              title={shortcutTitle(`Modo ${label}`, layoutShortcutMap[mode])}
-            >
-              <Icon size={11} />
-              {label}
-            </button>
+            <ShortcutTooltip key={mode} content={shortcutTitle(`Modo ${label}`, layoutShortcutMap[mode])}>
+              <button
+                onClick={() => onLayoutChange(mode)}
+                className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${effectiveLayoutMode === mode ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                <Icon size={11} />
+                {label}
+              </button>
+            </ShortcutTooltip>
           ))}
         </div>
 
@@ -260,18 +261,19 @@ function ActionBar({
             }
           </button>
         ) : (
+          <ShortcutTooltip content={shortcutTitle('Salvar', [mod, 'S'])}>
             <button
               onClick={() => onSave(tab.path, tab.content)}
               className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              tab.isDirty
-                ? 'bg-indigo-600 text-white hover:bg-indigo-500'
-                : 'text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'
-            }`}
-              title={shortcutTitle('Salvar', [mod, 'S'])}
+                tab.isDirty
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+                  : 'text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400'
+              }`}
             >
-            <Save size={11} />
-            {tab.isDirty ? 'Salvar' : 'Salvo'}
-          </button>
+              <Save size={11} />
+              {tab.isDirty ? 'Salvar' : 'Salvo'}
+            </button>
+          </ShortcutTooltip>
         )}
       </div>
     </div>
@@ -417,14 +419,15 @@ export function Editor({
                     )}
                   </span>
                 </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onTabClose(tab.path) }}
-                  className="ml-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 hover:bg-zinc-700"
-                  aria-label={`Fechar aba ${tab.name}`}
-                  title={shortcutTitle('Fechar aba', [mod, 'W'])}
-                >
-                  <X size={10} />
-                </button>
+                <ShortcutTooltip content={shortcutTitle('Fechar aba', [mod, 'W'])}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onTabClose(tab.path) }}
+                    className="ml-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 hover:bg-zinc-700"
+                    aria-label={`Fechar aba ${tab.name}`}
+                  >
+                    <X size={10} />
+                  </button>
+                </ShortcutTooltip>
               </div>
             )
           })}
@@ -469,22 +472,24 @@ export function Editor({
 
         {/* Terminal + Settings — always visible on the right */}
         <div className="flex shrink-0 items-center gap-0.5 border-l border-zinc-800 px-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <button
-            onClick={onToggleTerminal}
-            className={`rounded p-1.5 transition-colors hover:bg-zinc-700 ${terminalOpen ? 'text-indigo-400' : 'text-zinc-600 hover:text-zinc-300'}`}
-            title={shortcutTitle(terminalOpen ? 'Ocultar terminal' : 'Abrir terminal', [mod, '`'])}
-            aria-label="Abrir terminal"
-          >
-            <Terminal size={13} />
-          </button>
-          <button
-            onClick={onOpenSettings}
-            className="rounded p-1.5 text-zinc-600 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
-            title={shortcutTitle('Configurações', shortcutTokens.isMac ? [mod, ','] : undefined)}
-            aria-label="Abrir configurações"
-          >
-            <Settings size={13} />
-          </button>
+          <ShortcutTooltip content={shortcutTitle(terminalOpen ? 'Ocultar terminal' : 'Abrir terminal', [mod, '`'])}>
+            <button
+              onClick={onToggleTerminal}
+              className={`rounded p-1.5 transition-colors hover:bg-zinc-700 ${terminalOpen ? 'text-indigo-400' : 'text-zinc-600 hover:text-zinc-300'}`}
+              aria-label="Abrir terminal"
+            >
+              <Terminal size={13} />
+            </button>
+          </ShortcutTooltip>
+          <ShortcutTooltip content={shortcutTitle('Configurações', shortcutTokens.isMac ? [mod, ','] : undefined)}>
+            <button
+              onClick={onOpenSettings}
+              className="rounded p-1.5 text-zinc-600 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+              aria-label="Abrir configurações"
+            >
+              <Settings size={13} />
+            </button>
+          </ShortcutTooltip>
         </div>
       </div>
 

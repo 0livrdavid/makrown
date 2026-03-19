@@ -1,5 +1,17 @@
 import { contextBridge, ipcRenderer, webFrame } from 'electron'
-import type { DeleteUndoInfo, FileSystemResult, FileEntry, FileStatInfo, SearchFileResult, SearchContentResult, SSHProfileSummary, SSHConfig } from '../shared/types'
+import type {
+  DeleteUndoInfo,
+  FileSystemResult,
+  FileEntry,
+  FileStatInfo,
+  SearchFileResult,
+  SearchContentResult,
+  SSHProfileSummary,
+  SSHConfig,
+  UpdaterAvailableInfo,
+  UpdaterProgressInfo,
+  UpdaterErrorInfo,
+} from '../shared/types'
 
 const api = {
   platform: process.platform,
@@ -157,8 +169,8 @@ const api = {
       ipcRenderer.on('updater:checking', h)
       return () => ipcRenderer.removeListener('updater:checking', h)
     },
-    onAvailable: (cb: (info: { version: string; releaseNotes: string | null }) => void): (() => void) => {
-      const h = (_e: Electron.IpcRendererEvent, info: { version: string; releaseNotes: string | null }): void => cb(info)
+    onAvailable: (cb: (info: UpdaterAvailableInfo) => void): (() => void) => {
+      const h = (_e: Electron.IpcRendererEvent, info: UpdaterAvailableInfo): void => cb(info)
       ipcRenderer.on('updater:available', h)
       return () => ipcRenderer.removeListener('updater:available', h)
     },
@@ -167,8 +179,8 @@ const api = {
       ipcRenderer.on('updater:not-available', h)
       return () => ipcRenderer.removeListener('updater:not-available', h)
     },
-    onProgress: (cb: (p: { percent: number }) => void): (() => void) => {
-      const h = (_e: Electron.IpcRendererEvent, p: { percent: number }): void => cb(p)
+    onProgress: (cb: (p: UpdaterProgressInfo) => void): (() => void) => {
+      const h = (_e: Electron.IpcRendererEvent, p: UpdaterProgressInfo): void => cb(p)
       ipcRenderer.on('updater:progress', h)
       return () => ipcRenderer.removeListener('updater:progress', h)
     },
@@ -177,8 +189,8 @@ const api = {
       ipcRenderer.on('updater:downloaded', h)
       return () => ipcRenderer.removeListener('updater:downloaded', h)
     },
-    onError: (cb: (e: { message: string }) => void): (() => void) => {
-      const h = (_e: Electron.IpcRendererEvent, err: { message: string }): void => cb(err)
+    onError: (cb: (e: UpdaterErrorInfo) => void): (() => void) => {
+      const h = (_e: Electron.IpcRendererEvent, err: UpdaterErrorInfo): void => cb(err)
       ipcRenderer.on('updater:error', h)
       return () => ipcRenderer.removeListener('updater:error', h)
     },

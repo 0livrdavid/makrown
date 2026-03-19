@@ -10,11 +10,14 @@ import { SettingsModal, type VpsPrefs } from './components/SettingsModal'
 import { EnviarModal } from './components/EnviarModal'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ToastContainer } from './components/Toast'
+import { UpdateToast } from './components/UpdateToast'
+import { ShortcutTooltip } from './components/ShortcutTooltip'
 import { ToastContext } from './contexts/ToastContext'
 import { useToast } from './hooks/useToast'
 import type { TreeNode } from './hooks/useFileTree'
 import type { SSHConfig, SSHProfileSummary } from '../../shared/types'
 import { shortcutTitle, shortcutTokens } from './utils/shortcuts'
+import { describeUpdaterError, getUpdateVersion, toDownloadingState, type UpdateState } from './utils/updater'
 
 const DRAFT_PREFIX = 'makrown:draft:'
 const LARGE_FILE_BYTES = 1 * 1024 * 1024
@@ -250,6 +253,16 @@ function getDailyWelcomeMessage(): string {
   return WELCOME_MESSAGES[hash % WELCOME_MESSAGES.length]
 }
 
+function getUpdateToastKey(state: UpdateState): string | null {
+  if (state.kind === 'available' || state.kind === 'downloading' || state.kind === 'downloaded') {
+    return `${state.kind}:${state.version}`
+  }
+  if (state.kind === 'error') {
+    return `error:${state.message}`
+  }
+  return null
+}
+
 function AppBrandIcon(): React.JSX.Element {
   return (
     <svg width="64" height="64" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
@@ -305,12 +318,69 @@ function App(): React.JSX.Element {
   const sshStatusRef = useRef<'connected' | 'reconnecting' | 'disconnected'>('disconnected')
 
   const { toasts, addToast, removeToast } = useToast()
+  const [updateState, setUpdateState] = useState<UpdateState>({ kind: 'idle' })
+  const [dismissedUpdateToastKey, setDismissedUpdateToastKey] = useState<string | null>(null)
+  const updaterIntentRef = useRef<'auto' | 'manual'>('auto')
+  const updateToastKey = getUpdateToastKey(updateState)
+
+  const handleCheckForUpdates = useCallback((): void => {
+    updaterIntentRef.current = 'manual'
+    void window.api.updater.check()
+  }, [])
+
+  const handleDownloadUpdate = useCallback((): void => {
+    void window.api.updater.download()
+  }, [])
+
+  const handleInstallUpdate = useCallback((): void => {
+    void window.api.updater.install()
+  }, [])
+
+  const handleDismissUpdateToast = useCallback((): void => {
+    if (updateToastKey) setDismissedUpdateToastKey(updateToastKey)
+  }, [updateToastKey])
+
+  const handleOpenUpdateSettings = useCallback((): void => {
+    if (updateToastKey) setDismissedUpdateToastKey(updateToastKey)
+    setShowSettingsModal(true)
+  }, [updateToastKey])
 
   // Keep refs in sync for use inside setTimeout callbacks
   useEffect(() => { tabsRef.current = tabs }, [tabs])
   useEffect(() => { pendingUploadsRef.current = pendingUploads }, [pendingUploads])
   useEffect(() => { vpsPrefsRef.current = vpsPrefs }, [vpsPrefs])
   useEffect(() => { sshStatusRef.current = sshStatus }, [sshStatus])
+
+  useEffect(() => {
+    const unsubs = [
+      window.api.updater.onChecking(() => {
+        setUpdateState({ kind: 'checking' })
+      }),
+      window.api.updater.onAvailable((info) => {
+        setUpdateState({ kind: 'available', version: info.version, releaseNotes: info.releaseNotes })
+      }),
+      window.api.updater.onNotAvailable(() => {
+        setUpdateState({ kind: 'up-to-date' })
+        if (updaterIntentRef.current === 'manual') {
+          addToast('Você já está na versão mais recente.', 'success')
+        }
+        updaterIntentRef.current = 'auto'
+      }),
+      window.api.updater.onProgress((progress) => {
+        setUpdateState((prev) => toDownloadingState(getUpdateVersion(prev) ?? 'nova versão', progress))
+      }),
+      window.api.updater.onDownloaded(() => {
+        setUpdateState((prev) => ({ kind: 'downloaded', version: getUpdateVersion(prev) ?? 'nova versão' }))
+      }),
+      window.api.updater.onError((error) => {
+        const next = describeUpdaterError(error.message)
+        setUpdateState({ kind: 'error', ...next })
+        updaterIntentRef.current = 'auto'
+      }),
+    ]
+
+    return () => unsubs.forEach((unsubscribe) => unsubscribe())
+  }, [addToast])
 
   // Sync pendingUploads → localStorage whenever the list changes
   useEffect(() => {
@@ -1090,13 +1160,14 @@ function App(): React.JSX.Element {
           </div>
 
           <div className="flex flex-col items-center gap-2">
-            <button
-              onClick={handleSelectFolder}
-              className="w-72 rounded-md bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
-              title={shortcutTitle('Abrir pasta', [mod, 'O'])}
-            >
-              Abrir pasta
-            </button>
+            <ShortcutTooltip content={shortcutTitle('Abrir pasta', [mod, 'O'])}>
+              <button
+                onClick={handleSelectFolder}
+                className="w-72 rounded-md bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+              >
+                Abrir pasta
+              </button>
+            </ShortcutTooltip>
             <button
               onClick={() => setShowSSHModal(true)}
               className="flex w-72 items-center justify-center gap-2 rounded-md border border-zinc-700 px-5 py-2 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-200"
@@ -1212,8 +1283,21 @@ function App(): React.JSX.Element {
                 setVpsPrefs(prefs)
                 localStorage.setItem(VPS_PREFS_KEY, JSON.stringify(prefs))
               }}
+              updateState={updateState}
+              onCheckForUpdates={handleCheckForUpdates}
+              onDownloadUpdate={handleDownloadUpdate}
+              onInstallUpdate={handleInstallUpdate}
             />
           </div>
+        )}
+        {updateToastKey && updateToastKey !== dismissedUpdateToastKey && (
+          <UpdateToast
+            state={updateState}
+            onDownload={handleDownloadUpdate}
+            onInstall={handleInstallUpdate}
+            onOpenSettings={handleOpenUpdateSettings}
+            onDismiss={handleDismissUpdateToast}
+          />
         )}
         <ToastContainer toasts={toasts} onRemove={removeToast} />
       </ToastContext.Provider>
@@ -1331,10 +1415,23 @@ function App(): React.JSX.Element {
             }}
             localDiffEnabled={localDiffEnabled}
             onLocalDiffChange={handleLocalDiffChange}
+            updateState={updateState}
+            onCheckForUpdates={handleCheckForUpdates}
+            onDownloadUpdate={handleDownloadUpdate}
+            onInstallUpdate={handleInstallUpdate}
           />
         </div>
       )}
 
+      {updateToastKey && updateToastKey !== dismissedUpdateToastKey && (
+        <UpdateToast
+          state={updateState}
+          onDownload={handleDownloadUpdate}
+          onInstall={handleInstallUpdate}
+          onOpenSettings={handleOpenUpdateSettings}
+          onDismiss={handleDismissUpdateToast}
+        />
+      )}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </ToastContext.Provider>
   )

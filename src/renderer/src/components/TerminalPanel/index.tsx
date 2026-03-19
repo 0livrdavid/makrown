@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Plus, X, Terminal as TerminalIcon } from 'lucide-react'
 import { TerminalTab } from './TerminalTab'
+import { ShortcutTooltip } from '../ShortcutTooltip'
 import { shortcutTitle, shortcutTokens } from '../../utils/shortcuts'
 
 interface TabState {
@@ -130,14 +131,15 @@ export function TerminalPanel({ isOpen, height, onHeightChange, onClose, cwd, is
           >
             <Plus size={12} />
           </button>
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center px-2 py-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex-shrink-0"
-            title={shortcutTitle('Ocultar terminal', [mod, '`'])}
-            aria-label="Ocultar terminal"
-          >
-            <X size={12} />
-          </button>
+          <ShortcutTooltip content={shortcutTitle('Ocultar terminal', [mod, '`'])}>
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center px-2 py-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex-shrink-0"
+              aria-label="Ocultar terminal"
+            >
+              <X size={12} />
+            </button>
+          </ShortcutTooltip>
         </div>
       </div>
 

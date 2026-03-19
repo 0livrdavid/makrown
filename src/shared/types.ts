@@ -105,3 +105,19 @@ export interface SearchContentResult {
   excerpt: string
   lineNumber: number
 }
+
+export interface UpdaterAvailableInfo {
+  version: string
+  releaseNotes: string | null
+}
+
+export interface UpdaterProgressInfo {
+  percent: number
+  bytesPerSecond: number
+  transferredBytes: number
+  totalBytes: number
+}
+
+export interface UpdaterErrorInfo {
+  message: string
+}

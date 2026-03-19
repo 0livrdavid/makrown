@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import type { UpdaterAvailableInfo, UpdaterErrorInfo, UpdaterProgressInfo } from '../../shared/types'
 
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
@@ -24,7 +25,11 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
     })
 
     autoUpdater.on('update-available', (info) => {
-      send('updater:available', { version: info.version, releaseNotes: info.releaseNotes ?? null })
+      const payload: UpdaterAvailableInfo = {
+        version: info.version,
+        releaseNotes: info.releaseNotes ?? null,
+      }
+      send('updater:available', payload)
     })
 
     autoUpdater.on('update-not-available', () => {
@@ -32,7 +37,13 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
     })
 
     autoUpdater.on('download-progress', (progress) => {
-      send('updater:progress', { percent: Math.round(progress.percent) })
+      const payload: UpdaterProgressInfo = {
+        percent: Math.round(progress.percent),
+        bytesPerSecond: Math.round(progress.bytesPerSecond),
+        transferredBytes: progress.transferred,
+        totalBytes: progress.total,
+      }
+      send('updater:progress', payload)
     })
 
     autoUpdater.on('update-downloaded', () => {
@@ -40,7 +51,8 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
     })
 
     autoUpdater.on('error', (err) => {
-      send('updater:error', { message: err.message })
+      const payload: UpdaterErrorInfo = { message: err.message }
+      send('updater:error', payload)
     })
 
     ipcMain.handle('updater:check', async () => {
@@ -51,7 +63,8 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
       try {
         await autoUpdater.checkForUpdates()
       } catch (err) {
-        send('updater:error', { message: (err as Error).message })
+        const payload: UpdaterErrorInfo = { message: (err as Error).message }
+        send('updater:error', payload)
       }
     })
 
@@ -59,7 +72,8 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
       try {
         await autoUpdater.downloadUpdate()
       } catch (err) {
-        send('updater:error', { message: (err as Error).message })
+        const payload: UpdaterErrorInfo = { message: (err as Error).message }
+        send('updater:error', payload)
       }
     })
 

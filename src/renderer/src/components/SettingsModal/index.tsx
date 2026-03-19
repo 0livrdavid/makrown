@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { ChevronLeft, Type, FolderTree, Server, RefreshCw, GitCompare } from 'lucide-react'
 import type { EditorPrefs } from '../Editor'
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
+import type { UpdateState } from '../../utils/updater'
+import { formatByteSize, formatSpeed } from '../../utils/updater'
 
 export interface VpsPrefs {
   autoSaveEnabled: boolean
@@ -17,6 +19,10 @@ interface SettingsPageProps {
   onVpsPrefsChange?: (prefs: VpsPrefs) => void
   localDiffEnabled?: boolean
   onLocalDiffChange?: (enabled: boolean) => void
+  updateState: UpdateState
+  onCheckForUpdates: () => void
+  onDownloadUpdate: () => void
+  onInstallUpdate: () => void
 }
 
 // ─── Static data ────────────────────────────────────────────────────────────
@@ -399,30 +405,18 @@ function VpsSection({
 
 // ─── Update section ───────────────────────────────────────────────────────────
 
-type UpdateState =
-  | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'up-to-date' }
-  | { kind: 'available'; version: string }
-  | { kind: 'downloading'; percent: number }
-  | { kind: 'downloaded' }
-  | { kind: 'error'; message: string }
-
-function UpdateSection(): React.JSX.Element {
-  const [state, setState] = useState<UpdateState>({ kind: 'idle' })
+function UpdateSection({
+  state,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
+}: {
+  state: UpdateState
+  onCheckForUpdates: () => void
+  onDownloadUpdate: () => void
+  onInstallUpdate: () => void
+}): React.JSX.Element {
   const appVersion = window.api?.appVersion ?? '0.1.0'
-
-  useEffect(() => {
-    const unsubs = [
-      window.api.updater.onChecking(() => setState({ kind: 'checking' })),
-      window.api.updater.onAvailable((info) => setState({ kind: 'available', version: info.version })),
-      window.api.updater.onNotAvailable(() => setState({ kind: 'up-to-date' })),
-      window.api.updater.onProgress((p) => setState({ kind: 'downloading', percent: p.percent })),
-      window.api.updater.onDownloaded(() => setState({ kind: 'downloaded' })),
-      window.api.updater.onError((e) => setState({ kind: 'error', message: e.message })),
-    ]
-    return () => unsubs.forEach((u) => u())
-  }, [])
 
   return (
     <div className="space-y-6">
@@ -452,13 +446,15 @@ function UpdateSection(): React.JSX.Element {
           <p className="text-xs font-medium text-indigo-300">
             Nova versão disponível: <span className="font-mono">{state.version}</span>
           </p>
-          <p className="mt-0.5 text-[11px] text-indigo-400/70">Clique em baixar para instalar.</p>
+          <p className="mt-0.5 text-[11px] text-indigo-400/70">
+            Você pode baixar em segundo plano e continuar usando o app.
+          </p>
         </div>
       )}
       {state.kind === 'downloading' && (
         <div className="space-y-2">
           <div className="flex justify-between text-[11px] text-zinc-400">
-            <span>Baixando atualização…</span>
+            <span>Baixando Makrown {state.version}…</span>
             <span>{state.percent}%</span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
@@ -467,11 +463,16 @@ function UpdateSection(): React.JSX.Element {
               style={{ width: `${state.percent}%` }}
             />
           </div>
+          <p className="text-[11px] text-zinc-500">
+            {formatByteSize(state.transferredBytes)} / {formatByteSize(state.totalBytes)} • {formatSpeed(state.bytesPerSecond)}
+          </p>
         </div>
       )}
       {state.kind === 'downloaded' && (
         <div className="rounded-lg border border-emerald-700/50 bg-emerald-600/10 px-4 py-3">
-          <p className="text-xs font-medium text-emerald-300">Atualização pronta para instalar.</p>
+          <p className="text-xs font-medium text-emerald-300">
+            Atualização pronta para instalar: <span className="font-mono">{state.version}</span>
+          </p>
           <p className="mt-0.5 text-[11px] text-emerald-400/70">
             O aplicativo vai reiniciar para aplicar.
           </p>
@@ -479,8 +480,11 @@ function UpdateSection(): React.JSX.Element {
       )}
       {state.kind === 'error' && (
         <div className="rounded-lg border border-red-700/50 bg-red-600/10 px-4 py-3">
-          <p className="text-xs font-medium text-red-300">Erro ao verificar atualização</p>
-          <p className="mt-0.5 text-[11px] text-red-400/70 font-mono">{state.message}</p>
+          <p className="text-xs font-medium text-red-300">Erro na atualização</p>
+          <p className="mt-0.5 text-[11px] text-red-400/80">{state.message}</p>
+          {state.details && (
+            <p className="mt-2 text-[10px] text-red-400/60 font-mono break-all">{state.details}</p>
+          )}
         </div>
       )}
 
@@ -488,7 +492,7 @@ function UpdateSection(): React.JSX.Element {
       <div className="flex gap-2">
         {(state.kind === 'idle' || state.kind === 'up-to-date' || state.kind === 'error') && (
           <button
-            onClick={() => window.api.updater.check()}
+            onClick={onCheckForUpdates}
             className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-700 hover:text-zinc-100"
           >
             <RefreshCw size={12} />
@@ -503,7 +507,7 @@ function UpdateSection(): React.JSX.Element {
         )}
         {state.kind === 'available' && (
           <button
-            onClick={() => window.api.updater.download()}
+            onClick={onDownloadUpdate}
             className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
           >
             Baixar atualização
@@ -511,7 +515,7 @@ function UpdateSection(): React.JSX.Element {
         )}
         {state.kind === 'downloaded' && (
           <button
-            onClick={() => window.api.updater.install()}
+            onClick={onInstallUpdate}
             className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
           >
             Reiniciar e instalar
@@ -524,7 +528,20 @@ function UpdateSection(): React.JSX.Element {
 
 // ─── Full-screen settings page ────────────────────────────────────────────────
 
-export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRemote, vpsPrefs, onVpsPrefsChange, localDiffEnabled = true, onLocalDiffChange }: SettingsPageProps): React.JSX.Element {
+export function SettingsModal({
+  editorPrefs,
+  onEditorPrefsChange,
+  onClose,
+  isRemote,
+  vpsPrefs,
+  onVpsPrefsChange,
+  localDiffEnabled = true,
+  onLocalDiffChange,
+  updateState,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
+}: SettingsPageProps): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SectionId>('fonte')
   const nav = [...NAV_BASE, NAV_VPS, NAV_APP]
   const dialogRef = useModalFocusTrap({ onClose })
@@ -618,7 +635,12 @@ export function SettingsModal({ editorPrefs, onEditorPrefsChange, onClose, isRem
               <VpsSection vpsPrefs={vpsPrefs} onChange={onVpsPrefsChange} />
             )}
             {activeSection === 'atualizacoes' && (
-              <UpdateSection />
+              <UpdateSection
+                state={updateState}
+                onCheckForUpdates={onCheckForUpdates}
+                onDownloadUpdate={onDownloadUpdate}
+                onInstallUpdate={onInstallUpdate}
+              />
             )}
           </div>
         </main>
