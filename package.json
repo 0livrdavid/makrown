@@ -47,7 +47,6 @@
     "gpt-tokenizer": "^3.4.0",
     "lucide-react": "^0.577.0",
     "node-pty": "^1.1.0",
-    "node-pty-prebuilt-multiarch": "^0.10.1-pre.5",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
