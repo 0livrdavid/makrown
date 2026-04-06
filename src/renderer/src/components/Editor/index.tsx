@@ -37,6 +37,11 @@ const FONT_FAMILY_MAP: Record<EditorPrefs['fontFamily'], string> = {
   mono: '"JetBrains Mono", "Fira Code", monospace',
 }
 
+function getFileExtension(path: string): string {
+  const match = /\.[^./\\]+$/.exec(path)
+  return match?.[0]?.toLowerCase() ?? ''
+}
+
 interface EditorProps {
   tabs: OpenTab[]
   pendingUploads?: OpenTab[]
@@ -79,7 +84,9 @@ function EditorPane({
   isRemote: boolean
 }): React.JSX.Element {
   const contentRef = useRef(tab.content)
-  const effectiveLayout: LayoutMode = tab.isLargeFile ? 'raw' : layout
+  const extension = getFileExtension(tab.path)
+  const forceRawMode = extension === '.json'
+  const effectiveLayout: LayoutMode = tab.isLargeFile || forceRawMode ? 'raw' : layout
 
   const handleChange = useCallback(
     (value: string) => {
@@ -197,13 +204,16 @@ function ActionBar({
   }, [stats.bytes, tab.fileSizeBytes])
 
   const effectiveLayoutMode: LayoutMode = isLargeFile ? 'raw' : layoutMode
+  const extension = getFileExtension(tab.path)
+  const forceRawMode = extension === '.json'
+  const resolvedLayoutMode: LayoutMode = isLargeFile || forceRawMode ? 'raw' : effectiveLayoutMode
   const { mod } = shortcutTokens
   const layoutShortcutMap: Partial<Record<LayoutMode, string[]>> = {
     editor: [mod, '1'],
     raw: [mod, '2'],
     visualize: [mod, '3'],
   }
-  const layoutOptions: [LayoutMode, React.ElementType, string][] = isLargeFile
+  const layoutOptions: [LayoutMode, React.ElementType, string][] = isLargeFile || forceRawMode
     ? [['raw', FileText, 'Raw']]
     : [
         ['editor', PenLine, 'Editor'],
@@ -232,7 +242,7 @@ function ActionBar({
             <ShortcutTooltip key={mode} content={shortcutTitle(`Modo ${label}`, layoutShortcutMap[mode])}>
               <button
                 onClick={() => onLayoutChange(mode)}
-                className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${effectiveLayoutMode === mode ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${resolvedLayoutMode === mode ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
                 <Icon size={11} />
                 {label}

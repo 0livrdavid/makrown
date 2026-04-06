@@ -253,6 +253,25 @@ function getDailyWelcomeMessage(): string {
   return WELCOME_MESSAGES[hash % WELCOME_MESSAGES.length]
 }
 
+function getFileExtension(path: string): string {
+  const match = /\.[^./\\]+$/.exec(path)
+  return match?.[0]?.toLowerCase() ?? ''
+}
+
+function formatContentForSave(path: string, content: string, tabSize: number): { ok: true; content: string } | { ok: false; message: string } {
+  const extension = getFileExtension(path)
+  if (extension !== '.json') {
+    return { ok: true, content }
+  }
+
+  try {
+    const parsed = JSON.parse(content)
+    return { ok: true, content: `${JSON.stringify(parsed, null, tabSize)}\n` }
+  } catch {
+    return { ok: false, message: 'JSON inválido. Corrija o arquivo antes de salvar.' }
+  }
+}
+
 function getUpdateToastKey(state: UpdateState): string | null {
   if (state.kind === 'available' || state.kind === 'downloading' || state.kind === 'downloaded') {
     return `${state.kind}:${state.version}`
@@ -951,6 +970,14 @@ function App(): React.JSX.Element {
   }, [isRemote, scheduleAutoSave, cancelAutoSave])
 
   const handleSave = useCallback(async (path: string, content: string) => {
+    const formatted = formatContentForSave(path, content, editorPrefs.tabSize)
+    if (!formatted.ok) {
+      addToast(formatted.message, 'error')
+      return
+    }
+
+    const nextContent = formatted.content
+
     if (isRemote && sshStatusRef.current === 'reconnecting') {
       addToast('Reconectando ao servidor... aguarde para salvar.', 'error')
       return
@@ -959,11 +986,11 @@ function App(): React.JSX.Element {
       cancelAutoSave(path)
       setTabs((prev) => prev.map((t) => t.path === path ? { ...t, isUploading: true } : t))
     }
-    const result = await window.api.fs.writeFile(path, content)
+    const result = await window.api.fs.writeFile(path, nextContent)
     if (result.ok) {
       clearDraft(path)
       setTabs((prev) => prev.map((t) => t.path === path
-        ? { ...t, isDirty: false, isUploading: false, originalContent: content }
+        ? { ...t, content: nextContent, isDirty: false, isUploading: false, originalContent: nextContent }
         : t
       ))
       // Also remove from pendingUploads if it was there (e.g. closed dirty tab)
@@ -973,7 +1000,7 @@ function App(): React.JSX.Element {
       setTabs((prev) => prev.map((t) => t.path === path ? { ...t, isUploading: false } : t))
       addToast('Erro ao salvar arquivo', 'error')
     }
-  }, [isRemote, cancelAutoSave, addToast])
+  }, [isRemote, cancelAutoSave, addToast, editorPrefs.tabSize])
 
   const handleEnviar = useCallback(async (paths: string[]) => {
     const allTabs = [...tabs, ...pendingUploads]
