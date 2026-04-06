@@ -55,13 +55,13 @@ if ! git pull --rebase origin main; then
 fi
 
 # Versão atual
-CURRENT=$(node -p "require('./package.json').version")
+CURRENT=$(node -p "require('../package.json').version")
 echo "📌 Versão atual: $CURRENT"
 
 # Bump version (sem criar tag ainda)
 npm version "$TYPE" --no-git-tag-version
 
-NEW_VERSION=$(node -p "require('./package.json').version")
+NEW_VERSION=$(node -p "require('../package.json').version")
 echo "🚀 Nova versão: $NEW_VERSION"
 
 # Commit + tag
